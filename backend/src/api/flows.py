@@ -144,6 +144,36 @@ async def submit_interaction(req: InteractionResponse):
     return {"status": "ok", "interaction_id": req.interaction_id}
 
 
+@router.get("/definition/{flow_file:path}")
+async def get_flow_definition(flow_file: str, request: Request):
+    """Return the full parsed flow definition (states, transitions, config)."""
+    settings = request.app.state.settings
+    flow_path = Path(settings.flows_dir) / flow_file
+    if not flow_path.exists():
+        raise HTTPException(status_code=404, detail=f"Flow file not found: {flow_file}")
+
+    parser = FlowParser()
+    try:
+        parsed = parser.parse_file(flow_path)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to parse flow: {exc}")
+
+    # Serialize each node back to dict
+    states: dict[str, Any] = {}
+    for state_name, node in parsed.nodes.items():
+        states[state_name] = node.model_dump(exclude_none=True)
+
+    config = parsed.definition.config.model_dump(exclude_none=True)
+
+    return {
+        "name": parsed.definition.name,
+        "description": parsed.definition.description,
+        "version": parsed.definition.version,
+        "config": config,
+        "states": states,
+    }
+
+
 @router.get("/active")
 async def list_active_flows():
     """List currently active flow engines."""
