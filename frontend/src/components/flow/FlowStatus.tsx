@@ -40,8 +40,17 @@ function eventSummary(evt: FlowEvent): string {
       return `Waiting for user input: ${d.prompt || d.interaction_type}`;
     case 'flow_user_response':
       return `User responded: ${d.response}`;
-    case 'flow_completed':
-      return `Flow completed (${d.status})`;
+    case 'flow_completed': {
+      let completedMsg = `Flow completed (${d.status})`;
+      const output = d.output as Record<string, unknown> | undefined;
+      if (output?.result) {
+        const resultStr = typeof output.result === 'string'
+          ? output.result
+          : JSON.stringify(output.result, null, 2);
+        completedMsg += `\n\n${resultStr}`;
+      }
+      return completedMsg;
+    }
     case 'flow_retry_exceeded':
       return `Retry limit exceeded: ${d.loop}`;
     default:

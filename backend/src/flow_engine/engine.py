@@ -297,7 +297,7 @@ class FlowEngine:
                 "flow_id": flow_id,
                 "state": state_name,
                 "agent": node.agent,
-                "output_summary": str(output.get("result", ""))[:500] if isinstance(output, dict) else str(output)[:500],
+                "output_summary": str(output.get("result", ""))[:3000] if isinstance(output, dict) else str(output)[:3000],
                 "workspace_files": [f["path"] for f in workspace_files] if workspace_files else [],
             },
         )

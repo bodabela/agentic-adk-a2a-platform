@@ -256,6 +256,104 @@ export function FlowsPage() {
             </button>
           </form>
 
+          {/* Current event – live detail of the latest event */}
+          {matchingFlow && matchingFlow.events.length > 0 && (() => {
+            const evt = matchingFlow.events[matchingFlow.events.length - 1];
+            const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
+            const agent = (evt.data.agent as string) || (evt.data.author as string) || '';
+
+            let eventColor = '#60a5fa';
+            let borderColor = '#1e293b';
+            if (evt.event_type === 'flow_agent_thinking') {
+              eventColor = '#a78bfa'; borderColor = '#2e1065';
+            } else if (evt.event_type === 'flow_agent_tool_use') {
+              eventColor = '#fbbf24'; borderColor = '#451a03';
+            } else if (evt.event_type === 'flow_agent_tool_result') {
+              eventColor = '#34d399'; borderColor = '#064e3b';
+            } else if (evt.event_type === 'flow_agent_streaming_text') {
+              eventColor = '#22d3ee'; borderColor = '#164e63';
+            } else if (evt.event_type === 'flow_completed') {
+              eventColor = '#4ade80'; borderColor = '#14532d';
+            } else if (evt.event_type === 'flow_started') {
+              eventColor = '#818cf8'; borderColor = '#312e81';
+            }
+
+            const d = evt.data;
+            let summary = evt.event_type;
+            switch (evt.event_type) {
+              case 'flow_started':
+                summary = `Flow "${d.flow_name}" started`; break;
+              case 'flow_state_entered':
+                summary = `Entered state: ${d.state} (${d.node_type})`; break;
+              case 'flow_agent_task_started': {
+                const input = d.input as Record<string, unknown> | undefined;
+                const inputStr = input ? JSON.stringify(input, null, 2) : '';
+                summary = `Agent "${d.agent}" started\n${inputStr}`; break;
+              }
+              case 'flow_agent_task_completed': {
+                const files = (d.workspace_files as string[]) || [];
+                const fileLine = files.length > 0 ? `\nFiles: ${files.join(', ')}` : '';
+                summary = `Agent "${d.agent}" completed${d.output_summary ? `\n${d.output_summary}` : ''}${fileLine}`; break;
+              }
+              case 'flow_agent_thinking':
+                summary = `${d.agent} ${d.is_thought ? 'thought' : 'thinking'}: ${d.text}`; break;
+              case 'flow_agent_tool_use':
+                summary = `${d.agent} calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`; break;
+              case 'flow_agent_tool_result': {
+                const resp = typeof d.tool_response === 'string'
+                  ? d.tool_response
+                  : JSON.stringify(d.tool_response || '', null, 2);
+                const truncated = resp.length > 300 ? resp.slice(0, 300) + '...' : resp;
+                summary = `${d.agent} tool result [${d.tool_name}]: ${truncated}`; break;
+              }
+              case 'flow_agent_streaming_text':
+                summary = String(d.text || ''); break;
+              case 'flow_llm_decision':
+                summary = `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''} [${d.provider}/${d.model}]`; break;
+              case 'flow_input_required':
+                summary = `Waiting for user input: ${d.prompt || d.interaction_type}`; break;
+              case 'flow_user_response':
+                summary = `User responded: ${d.response}`; break;
+              case 'flow_completed': {
+                summary = `Flow completed (${d.status})`;
+                const output = d.output as Record<string, unknown> | undefined;
+                if (output?.result) {
+                  const resultStr = typeof output.result === 'string'
+                    ? output.result
+                    : JSON.stringify(output.result, null, 2);
+                  summary += `\n\n${resultStr}`;
+                }
+                break;
+              }
+              case 'flow_retry_exceeded':
+                summary = `Retry limit exceeded: ${d.loop}`; break;
+            }
+
+            return (
+              <div
+                style={{
+                  marginTop: '0.75rem',
+                  padding: '0.5rem 0.625rem',
+                  background: '#020617',
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: 6,
+                  fontFamily: 'monospace',
+                  maxHeight: 200,
+                  overflowY: 'auto',
+                }}
+              >
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <span style={{ color: '#475569', fontSize: '1.05rem' }}>{time}</span>
+                  <span style={{ color: eventColor, fontSize: '1.05rem' }}>{evt.event_type}</span>
+                  {agent && <span style={{ color: '#a78bfa', fontSize: '1.05rem' }}>{agent}</span>}
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '1.05rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {summary}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Pending Interactions – below form */}
           {pendingInteractions.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
