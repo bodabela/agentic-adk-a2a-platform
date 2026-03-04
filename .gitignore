@@ -21,6 +21,9 @@ frontend/dist/
 *.swp
 *.swo
 
+# Logs
+logs/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -111,6 +111,7 @@ async def start_flow(req: FlowStartRequest, request: Request):
         llm_config=request.app.state.llm_config,
         runtime_provider=req.provider,
         runtime_model=req.model,
+        agent_registry=request.app.state.agent_registry,
     )
 
     _active_engines[flow.name] = engine

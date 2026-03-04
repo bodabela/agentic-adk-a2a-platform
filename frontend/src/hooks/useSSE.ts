@@ -3,11 +3,23 @@ import { useTaskStore } from '../stores/taskStore';
 import { useFlowStore } from '../stores/flowStore';
 import { useCostStore } from '../stores/costStore';
 
+const FLOW_EVENTS = [
+  'flow_started',
+  'flow_state_entered',
+  'flow_agent_task_started',
+  'flow_agent_task_completed',
+  'flow_llm_decision',
+  'flow_input_required',
+  'flow_completed',
+  'flow_retry_exceeded',
+];
+
 export function useSSE() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const addTaskEvent = useTaskStore((s) => s.addEvent);
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
   const updateFlowState = useFlowStore((s) => s.updateFlowState);
+  const addFlowEvent = useFlowStore((s) => s.addFlowEvent);
   const addInteraction = useFlowStore((s) => s.addInteraction);
   const addCostEvent = useCostStore((s) => s.addCostEvent);
 
@@ -37,37 +49,50 @@ export function useSSE() {
       updateTaskStatus(data.task_id, 'failed', data.error);
     });
 
-    es.addEventListener('flow_started', (e) => {
-      const data = JSON.parse(e.data);
-      updateFlowState(data.flow_id, {
-        flowId: data.flow_id,
-        flowName: data.flow_name,
-        currentState: '',
-        status: 'running',
-        states: {},
+    // --- Flow events: update state + collect into timeline ---
+    for (const eventName of FLOW_EVENTS) {
+      es.addEventListener(eventName, (e) => {
+        const data = JSON.parse(e.data);
+        const flowId = data.flow_id;
+        if (!flowId) return;
+
+        // Always add to event timeline
+        addFlowEvent(flowId, {
+          event_type: eventName,
+          timestamp: new Date().toISOString(),
+          data,
+        });
+
+        // State-specific updates
+        switch (eventName) {
+          case 'flow_started':
+            updateFlowState(flowId, {
+              flowId,
+              flowName: data.flow_name,
+              currentState: '',
+              status: 'running',
+              states: {},
+              events: [],
+            });
+            break;
+          case 'flow_state_entered':
+            updateFlowState(flowId, { currentState: data.state });
+            break;
+          case 'flow_input_required':
+            addInteraction({
+              interaction_id: data.interaction_id,
+              flow_id: flowId,
+              interaction_type: data.interaction_type,
+              prompt: data.prompt,
+              options: data.options,
+            });
+            break;
+          case 'flow_completed':
+            updateFlowState(flowId, { status: 'completed', output: data.output });
+            break;
+        }
       });
-    });
-
-    es.addEventListener('flow_state_entered', (e) => {
-      const data = JSON.parse(e.data);
-      updateFlowState(data.flow_id, { currentState: data.state });
-    });
-
-    es.addEventListener('flow_input_required', (e) => {
-      const data = JSON.parse(e.data);
-      addInteraction({
-        interaction_id: data.interaction_id,
-        flow_id: data.flow_id,
-        interaction_type: data.interaction_type,
-        prompt: data.prompt,
-        options: data.options,
-      });
-    });
-
-    es.addEventListener('flow_completed', (e) => {
-      const data = JSON.parse(e.data);
-      updateFlowState(data.flow_id, { status: 'completed' });
-    });
+    }
 
     es.addEventListener('cost_event', (e) => {
       const data = JSON.parse(e.data);
@@ -89,7 +114,7 @@ export function useSSE() {
     };
 
     eventSourceRef.current = es;
-  }, [addTaskEvent, updateTaskStatus, updateFlowState, addInteraction, addCostEvent]);
+  }, [addTaskEvent, updateTaskStatus, updateFlowState, addFlowEvent, addInteraction, addCostEvent]);
 
   useEffect(() => {
     connect();

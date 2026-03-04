@@ -16,6 +16,7 @@ class AgentModuleInfo:
     module_yaml: dict
     a2a_url: str | None = None
     capabilities: list[str] = field(default_factory=list)
+    workspace_dir: Path | None = None
 
 
 class AgentRegistry:
@@ -43,13 +44,29 @@ class AgentRegistry:
                 agent_info = manifest.get("agent", {})
                 name = module_info.get("name", module_dir.name)
 
+                # Read a2a_url from agent_card.json if available
+                a2a_url = None
+                if agent_card_path.exists():
+                    card = json.loads(agent_card_path.read_text())
+                    a2a_url = card.get("url")
+
+                # Resolve workspace directory
+                workspace_cfg = manifest.get("tools", {}).get("mcp", {}).get("workspace")
+                if workspace_cfg:
+                    workspace_dir = (module_dir / workspace_cfg).resolve()
+                else:
+                    # Default: <project_root>/workspace
+                    workspace_dir = self.modules_dir.parent / "workspace"
+
                 self._agents[name] = AgentModuleInfo(
                     name=name,
                     version=module_info.get("version", "0.0.0"),
                     description=module_info.get("description", ""),
                     agent_card_path=agent_card_path,
                     module_yaml=manifest,
+                    a2a_url=a2a_url,
                     capabilities=agent_info.get("capabilities", []),
+                    workspace_dir=workspace_dir,
                 )
 
     def get_agent(self, name: str) -> AgentModuleInfo | None:

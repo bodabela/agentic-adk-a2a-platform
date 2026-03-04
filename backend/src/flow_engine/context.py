@@ -73,7 +73,7 @@ class FlowContext:
             main_expr = parts[0].strip()
             filter_expr = parts[1].strip()
             result = self._evaluate_expression(main_expr)
-            if result is None and filter_expr.startswith("default("):
+            if (result is None or result == "") and filter_expr.startswith("default("):
                 default_val = filter_expr[8:-1].strip("'\"")
                 return default_val
             return result

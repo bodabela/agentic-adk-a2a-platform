@@ -26,8 +26,9 @@ agent:
 
 tools:
   mcp:
-    transport: "stdio"
-    server: "tools/mcp_server.py"
+    transport: "stdio"           # "stdio" = child process, "sse" = remote HTTP
+    server: "tools/mcp_server.py"  # stdio: script path relative to module dir
+    # url: "http://localhost:8010/sse"  # sse: uncomment when running MCP server separately
     tools:
       - name: "generate_code_files"
         description: "Generate code file contents based on a specification"

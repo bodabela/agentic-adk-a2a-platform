@@ -23,6 +23,7 @@ flow:
       type: "agent_task"
       agent: "coder_agent"
       description: "Generate code from the task description"
+      retry_loop: "generate_revise"
       input:
         requirement: "{{ trigger.task_description }}"
       output: [source_files, summary]
@@ -46,7 +47,7 @@ flow:
     ask_user_input:
       type: "human_interaction"
       interaction_type: "free_text"
-      prompt: "The agent has a question about the task. Please provide more details."
+      prompt: "{{ states.review_result.output.reason | default('The agent has a question about the task. Please provide more details.') }}"
       on_response: "generate_code"
 
     handle_error:

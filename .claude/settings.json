@@ -25,7 +25,11 @@
       "Bash(python -c \"import google.genai; print\\(dir\\(google.genai\\)\\)\")",
       "Bash(timeout 8 python -m uvicorn src.main:app --host 127.0.0.1 --port 8000)",
       "Bash(timeout 5 python -m uvicorn src.main:app --host 127.0.0.1 --port 8001 --no-access-log)",
-      "WebFetch(domain:ai.google.dev)"
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(python -c \"import google.adk.tools.mcp_tool; print\\(dir\\(google.adk.tools.mcp_tool\\)\\)\")",
+      "Bash(python -c \"from google.adk.tools.mcp_tool import McpToolset; help\\(McpToolset.__init__\\)\")",
+      "Bash(python -c \"from google.adk.tools.mcp_tool import StdioConnectionParams; help\\(StdioConnectionParams\\)\")",
+      "Bash(python -c \"import dotenv; print\\(''OK:'', dotenv.__file__\\)\")"
     ]
   }
 }

@@ -1,32 +1,159 @@
 """Entry point to expose coder_agent as an A2A server."""
 
+import json
+import logging
+import uuid
 from pathlib import Path
-from modules.coder_agent.agent.agent import root_agent
+
+from dotenv import load_dotenv
+
+# Load module-level .env
+_module_dir = Path(__file__).resolve().parent.parent
+load_dotenv(_module_dir / ".env")
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("coder_agent.a2a")
 
 # Note: This is used as:
 #   uvicorn modules.coder_agent.agent.serve_a2a:app --port 8001
 # from the project root directory.
 
-try:
-    from google.adk.a2a.executor import A2AExecutor
+app = FastAPI(title="coder_agent A2A Server")
 
-    executor = A2AExecutor(
-        agent=root_agent,
-        agent_card=str(Path(__file__).parent / "agent_card.json"),
-    )
-    app = executor.get_app()
-except ImportError:
-    # Fallback: create a simple FastAPI app for testing
-    from fastapi import FastAPI
+CARD_PATH = Path(__file__).parent / "agent_card.json"
 
-    app = FastAPI(title="coder_agent A2A Server")
 
-    @app.get("/.well-known/agent.json")
-    async def agent_card():
-        import json
-        card_path = Path(__file__).parent / "agent_card.json"
-        return json.loads(card_path.read_text())
+@app.get("/.well-known/agent.json")
+async def agent_card():
+    return json.loads(CARD_PATH.read_text())
 
-    @app.get("/health")
-    async def health():
-        return {"status": "ok", "agent": "coder_agent"}
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "agent": "coder_agent"}
+
+
+# --- A2A JSON-RPC handler ---
+
+_runner = None
+
+
+def _get_runner():
+    """Lazy-init the ADK Runner for coder_agent."""
+    global _runner
+    if _runner is not None:
+        return _runner
+
+    try:
+        from google.adk.runners import Runner
+        from google.adk.sessions import InMemorySessionService
+        from modules.coder_agent.agent.agent import root_agent
+
+        session_service = InMemorySessionService()
+        _runner = Runner(
+            agent=root_agent,
+            app_name="coder_agent_a2a",
+            session_service=session_service,
+        )
+        logger.info("ADK Runner initialized for coder_agent")
+        return _runner
+    except Exception as e:
+        logger.error("Failed to initialize ADK Runner: %s", e)
+        return None
+
+
+@app.post("/")
+async def a2a_endpoint(request: Request):
+    """Handle A2A JSON-RPC requests (tasks/send)."""
+    body = await request.json()
+    req_id = body.get("id", str(uuid.uuid4()))
+    method = body.get("method", "")
+    params = body.get("params", {})
+
+    logger.info("[A2A] method=%s id=%s", method, req_id)
+
+    if method != "tasks/send":
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32601, "message": f"Method not found: {method}"},
+        })
+
+    # Extract user message
+    message = params.get("message", {})
+    parts = message.get("parts", [])
+    user_text = " ".join(p.get("text", "") for p in parts if p.get("type") == "text")
+    task_id = params.get("id", str(uuid.uuid4()))
+
+    logger.info("[A2A] task=%s prompt=%s", task_id, user_text[:200])
+
+    runner = _get_runner()
+    if runner is None:
+        # No ADK available — return the prompt as-is (for testing)
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "id": task_id,
+                "status": {"state": "completed"},
+                "artifacts": [{
+                    "parts": [{"type": "text", "text": f"[coder_agent echo] {user_text}"}],
+                }],
+            },
+        })
+
+    # Run the agent via ADK Runner
+    try:
+        from google.genai import types as genai_types
+
+        session = await runner.session_service.create_session(
+            app_name="coder_agent_a2a",
+            user_id="flow_engine",
+        )
+
+        user_content = genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=user_text)],
+        )
+
+        agent_response_parts = []
+        async for event in runner.run_async(
+            user_id="flow_engine",
+            session_id=session.id,
+            new_message=user_content,
+        ):
+            if event.is_final_response():
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            agent_response_parts.append(part.text)
+
+        result_text = "\n".join(agent_response_parts) or "[No response from agent]"
+        logger.info("[A2A] task=%s response=%s", task_id, result_text[:500])
+
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "id": task_id,
+                "status": {"state": "completed"},
+                "artifacts": [{
+                    "parts": [{"type": "text", "text": result_text}],
+                }],
+            },
+        })
+    except Exception as e:
+        logger.error("[A2A] task=%s error: %s", task_id, e, exc_info=True)
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "id": task_id,
+                "status": {"state": "failed"},
+                "artifacts": [{
+                    "parts": [{"type": "text", "text": f"Agent error: {e}"}],
+                }],
+            },
+        })

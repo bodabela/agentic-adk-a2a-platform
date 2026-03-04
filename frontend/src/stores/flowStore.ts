@@ -1,11 +1,19 @@
 import { create } from 'zustand';
 
+export interface FlowEvent {
+  event_type: string;
+  timestamp: string;
+  data: Record<string, unknown>;
+}
+
 interface FlowState {
   flowId: string;
   flowName: string;
   currentState: string;
   status: string;
   states: Record<string, { status: string; output?: unknown }>;
+  output?: Record<string, unknown>;
+  events: FlowEvent[];
 }
 
 interface PendingInteraction {
@@ -20,6 +28,7 @@ interface FlowStore {
   activeFlows: Record<string, FlowState>;
   pendingInteractions: PendingInteraction[];
   updateFlowState: (flowId: string, update: Partial<FlowState>) => void;
+  addFlowEvent: (flowId: string, event: FlowEvent) => void;
   addInteraction: (interaction: PendingInteraction) => void;
   resolveInteraction: (interactionId: string) => void;
   startFlow: (flowFile: string, input: Record<string, unknown>, provider?: string, model?: string) => Promise<void>;
@@ -36,6 +45,18 @@ export const useFlowStore = create<FlowStore>((set) => ({
         [flowId]: { ...state.activeFlows[flowId], ...update } as FlowState,
       },
     })),
+
+  addFlowEvent: (flowId, event) =>
+    set((state) => {
+      const flow = state.activeFlows[flowId];
+      if (!flow) return state;
+      return {
+        activeFlows: {
+          ...state.activeFlows,
+          [flowId]: { ...flow, events: [...flow.events, event] },
+        },
+      };
+    }),
 
   addInteraction: (interaction) =>
     set((state) => ({

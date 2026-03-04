@@ -121,6 +121,18 @@ echo   [OK]   Frontend ready
 if not exist "%ROOT%\backend\.env" (
     copy "%ROOT%\.env" "%ROOT%\backend\.env" >nul 2>&1
 )
+if not exist "%ROOT%\modules\coder_agent\.env" (
+    copy "%ROOT%\.env" "%ROOT%\modules\coder_agent\.env" >nul 2>&1
+)
+
+:: ============================================
+::  Prepare Logs
+:: ============================================
+
+if not exist "%ROOT%\logs" mkdir "%ROOT%\logs"
+set "LOG_BACKEND=%ROOT%\logs\startup-backend.log"
+set "LOG_AGENT=%ROOT%\logs\startup-coder-agent.log"
+set "LOG_FRONTEND=%ROOT%\logs\startup-frontend.log"
 
 :: ============================================
 ::  Start Services
@@ -134,7 +146,8 @@ echo.
 
 :: ---- Backend ----
 echo [1/3] Starting backend on :8000 ...
-start "AgentPlatform-Backend" /D "%ROOT%\backend" cmd /c "uvicorn src.main:app --reload --host 127.0.0.1 --port 8000"
+echo   Log: %LOG_BACKEND%
+start "AgentPlatform-Backend" /D "%ROOT%\backend" cmd /c "uvicorn src.main:app --reload --host 127.0.0.1 --port 8000 > "%LOG_BACKEND%" 2>&1"
 
 if "!NOCURL!"=="1" (
     echo   [SKIP] No curl - waiting 5s instead of health check ...
@@ -160,7 +173,8 @@ echo   [OK]   Backend running    http://localhost:8000
 
 :: ---- Coder Agent (A2A) ----
 echo [2/3] Starting coder_agent on :8001 ...
-start "AgentPlatform-CoderAgent" /D "%ROOT%" cmd /c "uvicorn modules.coder_agent.agent.serve_a2a:app --host 127.0.0.1 --port 8001"
+echo   Log: %LOG_AGENT%
+start "AgentPlatform-CoderAgent" /D "%ROOT%" cmd /c "uvicorn modules.coder_agent.agent.serve_a2a:app --reload --host 127.0.0.1 --port 8001 > "%LOG_AGENT%" 2>&1"
 
 if "!NOCURL!"=="1" (
     timeout /t 3 /nobreak >nul
@@ -184,7 +198,8 @@ echo   [OK]   Coder Agent       http://localhost:8001
 :: ---- Frontend ----
 :start_frontend
 echo [3/3] Starting frontend on :5173 ...
-start "AgentPlatform-Frontend" /D "%ROOT%\frontend" cmd /c "call pnpm dev"
+echo   Log: %LOG_FRONTEND%
+start "AgentPlatform-Frontend" /D "%ROOT%\frontend" cmd /c "call pnpm dev > "%LOG_FRONTEND%" 2>&1"
 
 if "!NOCURL!"=="1" (
     timeout /t 5 /nobreak >nul

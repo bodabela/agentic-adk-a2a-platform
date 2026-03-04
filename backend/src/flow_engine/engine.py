@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Any, TYPE_CHECKING
+
+logger = logging.getLogger("flow_engine")
 
 from src.cost.tracker import CostTracker
 from src.events.bus import EventBus
@@ -31,6 +35,7 @@ from src.flow_engine.state_store import (
 
 if TYPE_CHECKING:
     from src.llm.config import LLMProvidersConfig
+    from src.orchestrator.agent_registry import AgentRegistry
 
 
 class FlowEngine:
@@ -44,6 +49,7 @@ class FlowEngine:
         llm_config: LLMProvidersConfig | None = None,
         runtime_provider: str | None = None,
         runtime_model: str | None = None,
+        agent_registry: AgentRegistry | None = None,
     ):
         self.event_bus = event_bus
         self.cost_tracker = cost_tracker
@@ -51,6 +57,7 @@ class FlowEngine:
         self.llm_config = llm_config
         self.runtime_provider = runtime_provider
         self.runtime_model = runtime_model
+        self.agent_registry = agent_registry
         self._pending_interactions: dict[str, asyncio.Future] = {}
 
     async def execute_flow(
@@ -250,9 +257,13 @@ class FlowEngine:
             },
         )
 
-        # TODO: Invoke the actual agent via A2A
-        # For now, return a placeholder output
-        output = {"result": f"Output from {node.agent}", **resolved_input}
+        # Invoke the agent via A2A JSON-RPC
+        output = await self._call_agent_a2a(node.agent, resolved_input, flow_id)
+
+        # Scan workspace for generated files and include contents
+        workspace_files = self._scan_workspace(node.agent)
+        if workspace_files:
+            output["source_files"] = workspace_files
 
         # Store output and set it as current for side_effect resolution
         context.flow_vars["_current_output"] = output
@@ -264,10 +275,114 @@ class FlowEngine:
                 "flow_id": flow_id,
                 "state": state_name,
                 "agent": node.agent,
+                "output_summary": str(output.get("result", ""))[:500] if isinstance(output, dict) else str(output)[:500],
+                "workspace_files": [f["path"] for f in workspace_files] if workspace_files else [],
             },
         )
 
         return node.on_complete
+
+    async def _call_agent_a2a(
+        self,
+        agent_name: str,
+        task_input: dict[str, Any],
+        flow_id: str,
+    ) -> dict[str, Any]:
+        """Call an agent via A2A JSON-RPC protocol."""
+        import httpx
+
+        # Resolve agent URL from registry
+        a2a_url: str | None = None
+        if self.agent_registry:
+            agent_info = self.agent_registry.get_agent(agent_name)
+            if agent_info:
+                a2a_url = agent_info.a2a_url
+
+        if not a2a_url:
+            logger.warning("[A2A] Agent '%s' not found in registry", agent_name)
+            return {"result": f"Agent '{agent_name}' not found in registry", **task_input}
+
+        logger.info("[A2A] Calling %s at %s", agent_name, a2a_url)
+
+        # Build A2A JSON-RPC request
+        task_id = str(uuid.uuid4())
+        prompt_parts = [f"{k}: {v}" for k, v in task_input.items() if v]
+        prompt_text = "\n".join(prompt_parts) or str(task_input)
+
+        payload = {
+            "jsonrpc": "2.0",
+            "id": f"flow-{flow_id}",
+            "method": "tasks/send",
+            "params": {
+                "id": task_id,
+                "message": {
+                    "role": "user",
+                    "parts": [{"type": "text", "text": prompt_text}],
+                },
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(a2a_url, json=payload)
+                logger.info("[A2A] %s response status=%s", agent_name, resp.status_code)
+                logger.debug("[A2A] %s raw response: %s", agent_name, resp.text[:2000])
+                resp.raise_for_status()
+                data = resp.json()
+
+            # Parse A2A JSON-RPC response
+            result = data.get("result", {})
+            artifacts = result.get("artifacts", [])
+
+            # Extract text from artifact parts
+            texts = []
+            for artifact in artifacts:
+                for part in artifact.get("parts", []):
+                    if part.get("type") == "text":
+                        texts.append(part["text"])
+
+            output = {
+                "result": "\n".join(texts) if texts else str(result),
+                "task_id": task_id,
+                "status": result.get("status", {}).get("state", "unknown"),
+            }
+            logger.info("[A2A] %s output: %s", agent_name, str(output)[:500])
+            return output
+        except httpx.ConnectError:
+            logger.error("[A2A] %s not reachable at %s", agent_name, a2a_url)
+            return {"result": f"Agent '{agent_name}' is not reachable at {a2a_url}", **task_input}
+        except Exception as e:
+            logger.error("[A2A] %s call failed: %s", agent_name, e)
+            return {"result": f"A2A call to '{agent_name}' failed: {e}", **task_input}
+
+    def _scan_workspace(self, agent_name: str) -> list[dict[str, str]]:
+        """Scan the agent's workspace and return file paths + contents."""
+        from pathlib import Path
+
+        files: list[dict[str, str]] = []
+        if not self.agent_registry:
+            return files
+
+        agent_info = self.agent_registry.get_agent(agent_name)
+        if not agent_info or not agent_info.workspace_dir:
+            return files
+
+        workspace = agent_info.workspace_dir
+        if not workspace.exists():
+            return files
+
+        for file_path in sorted(workspace.rglob("*")):
+            if not file_path.is_file():
+                continue
+            rel_path = str(file_path.relative_to(workspace))
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                files.append({"path": rel_path, "content": content})
+            except (UnicodeDecodeError, OSError):
+                files.append({"path": rel_path, "content": "[binary file]"})
+
+        logger.info("[Workspace] %s: found %d files in %s", agent_name, len(files), workspace)
+        return files
 
     async def _handle_llm_decision(
         self,
@@ -288,14 +403,15 @@ class FlowEngine:
             f"Context:\n{resolved_context}\n\n"
             f"Decision prompt:\n{node.decision_prompt}\n\n"
             f"You MUST respond with exactly one of these choices: {available_transitions}\n"
-            f"Respond with only the choice name, nothing else."
+            f'Respond with JSON: {{"decision": "<choice>", "reason": "<brief explanation or question for the user>"}}\n'
+            f"Respond with only the JSON, nothing else."
         )
 
         provider, model = self._resolve_provider_model(node, flow)
+        from src.llm.provider import call_llm
 
         # Call the LLM if config with a valid API key is available
         if self.llm_config and self.llm_config.get_api_key(provider):
-            from src.llm.provider import call_llm
 
             response = await call_llm(
                 config=self.llm_config,
@@ -303,7 +419,27 @@ class FlowEngine:
                 model=model,
                 prompt=prompt,
             )
-            decision = response.text.strip()
+            raw_text = response.text.strip()
+            logger.info("[LLM Decision] raw response: %s", raw_text[:500])
+
+            # Strip markdown code block wrappers (```json ... ```)
+            clean_text = raw_text
+            if clean_text.startswith("```"):
+                lines = clean_text.split("\n")
+                # Remove first line (```json) and last line (```)
+                lines = [l for l in lines if not l.strip().startswith("```")]
+                clean_text = "\n".join(lines).strip()
+
+            # Parse JSON response: {"decision": "...", "reason": "..."}
+            decision_output: dict[str, str] = {}
+            try:
+                decision_output = json.loads(clean_text)
+                decision = decision_output.get("decision", "").strip()
+            except json.JSONDecodeError:
+                # Fallback: treat raw text as decision name
+                decision = raw_text
+                decision_output = {"decision": decision, "reason": ""}
+                logger.warning("[LLM Decision] Not JSON, raw text: %s", raw_text)
 
             await self.cost_tracker.record_llm_call(
                 task_id=flow_id,
@@ -318,6 +454,7 @@ class FlowEngine:
         else:
             # Fallback: pick the first transition as placeholder
             decision = available_transitions[0] if available_transitions else None
+            decision_output = {"decision": decision or "", "reason": ""}
 
         if not decision or decision not in node.transitions:
             # Try partial match (LLM may return extra whitespace/text)
@@ -334,12 +471,20 @@ class FlowEngine:
                     f"LLM decision '{decision}' not in transitions: {available_transitions}"
                 )
 
+        reason = decision_output.get("reason", "").strip()
+
+        context.set_state_output(state_name, {
+            "decision": decision,
+            "reason": reason,
+        })
+
         await self.event_bus.emit(
             "flow_llm_decision",
             {
                 "flow_id": flow_id,
                 "state": state_name,
                 "decision": decision,
+                "reason": reason,
                 "provider": provider,
                 "model": model,
                 "next_state": node.transitions[decision],
