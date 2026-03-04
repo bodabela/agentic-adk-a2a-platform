@@ -22,11 +22,13 @@ flow:
     generate_code:
       type: "agent_task"
       agent: "coder_agent"
-      description: "Generate code from the task description"
+      description: "Generate code from the task description (or ask clarifying questions)"
       retry_loop: "generate_revise"
       input:
         requirement: "{{ trigger.task_description }}"
-      output: [source_files, summary]
+        user_feedback: "{{ states.ask_user_input.output.response | default('') }}"
+        user_feedback_questions: "{{ states.ask_user_input.output.questions | default('') }}"
+      output: [source_files, summary, agent_questions]
       on_complete: "review_result"
       on_error: "handle_error"
 
@@ -35,10 +37,16 @@ flow:
       context:
         - "{{ states.generate_code.output }}"
       decision_prompt: |
-        Review the generated code:
-        - If it looks complete and correct -> accept
+        Review the agent's output. The output may contain generated code, or it may contain
+        questions the agent wants to ask the user (in the "agent_questions" field).
+
+        Decision rules:
+        - If "agent_questions" is present and non-empty -> ask_user
+          Copy the agent_questions array into your "questions" field as-is.
+        - If the code looks complete and correct -> accept
         - If it needs improvement -> revise
-        - If there are questions -> ask_user
+
+        When choosing ask_user, you MUST include the "questions" array from agent_questions.
       transitions:
         accept: "complete_success"
         revise: "generate_code"
@@ -46,8 +54,9 @@ flow:
 
     ask_user_input:
       type: "human_interaction"
-      interaction_type: "free_text"
-      prompt: "{{ states.review_result.output.reason | default('The agent has a question about the task. Please provide more details.') }}"
+      interaction_type: "multi_question"
+      prompt: "{{ states.review_result.output.reason | default('The agent has questions about the task.') }}"
+      questions: "{{ states.review_result.output.questions | default('') }}"
       on_response: "generate_code"
 
     handle_error:

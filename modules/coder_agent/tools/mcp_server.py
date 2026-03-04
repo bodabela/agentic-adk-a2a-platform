@@ -25,36 +25,18 @@ def _safe_resolve(file_path: str) -> Path:
 
 
 @mcp.tool()
-def generate_code_files(
-    specification: str,
-    language: str = "python",
-    output_format: str = "json",
-) -> dict:
-    """Generate code file contents based on a specification.
-
-    Args:
-        specification: Description of what code to generate
-        language: Programming language (python, typescript, etc.)
-        output_format: Output format (json)
+def list_workspace_files() -> dict:
+    """List all files in the workspace.
 
     Returns:
-        Dictionary with generated file paths and contents
+        Dictionary with list of file paths and their sizes
     """
-    return {
-        "status": "success",
-        "files": [
-            {
-                "path": f"src/main.{_ext(language)}",
-                "content": (
-                    f"# Generated from specification\n"
-                    f"# Language: {language}\n"
-                    f"# Spec: {specification}\n"
-                ),
-                "language": language,
-            }
-        ],
-        "summary": f"Generated 1 file for: {specification}",
-    }
+    files = []
+    for p in sorted(WORKSPACE.rglob("*")):
+        if p.is_file():
+            rel = str(p.relative_to(WORKSPACE))
+            files.append({"path": rel, "size_bytes": p.stat().st_size})
+    return {"status": "success", "files": files, "workspace": str(WORKSPACE)}
 
 
 @mcp.tool()
@@ -103,18 +85,6 @@ def write_code_file(file_path: str, content: str) -> dict:
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-
-def _ext(language: str) -> str:
-    mapping = {
-        "python": "py",
-        "typescript": "ts",
-        "javascript": "js",
-        "java": "java",
-        "go": "go",
-        "rust": "rs",
-    }
-    return mapping.get(language, "txt")
 
 
 if __name__ == "__main__":

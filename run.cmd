@@ -174,7 +174,7 @@ echo   [OK]   Backend running    http://localhost:8000
 :: ---- Coder Agent (A2A) ----
 echo [2/3] Starting coder_agent on :8001 ...
 echo   Log: %LOG_AGENT%
-start "AgentPlatform-CoderAgent" /D "%ROOT%" cmd /c "uvicorn modules.coder_agent.agent.serve_a2a:app --reload --host 127.0.0.1 --port 8001 > "%LOG_AGENT%" 2>&1"
+start "AgentPlatform-CoderAgent" /D "%ROOT%" cmd /c "uvicorn modules.coder_agent.agent.serve_a2a:app --reload --reload-dir modules\coder_agent --host 127.0.0.1 --port 8001 > "%LOG_AGENT%" 2>&1"
 
 if "!NOCURL!"=="1" (
     timeout /t 3 /nobreak >nul

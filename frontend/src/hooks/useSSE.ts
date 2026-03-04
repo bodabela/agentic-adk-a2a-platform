@@ -8,8 +8,12 @@ const FLOW_EVENTS = [
   'flow_state_entered',
   'flow_agent_task_started',
   'flow_agent_task_completed',
+  'flow_agent_thinking',
+  'flow_agent_tool_use',
+  'flow_agent_tool_result',
   'flow_llm_decision',
   'flow_input_required',
+  'flow_user_response',
   'flow_completed',
   'flow_retry_exceeded',
 ];
@@ -85,6 +89,7 @@ export function useSSE() {
               interaction_type: data.interaction_type,
               prompt: data.prompt,
               options: data.options,
+              questions: data.questions,
             });
             break;
           case 'flow_completed':

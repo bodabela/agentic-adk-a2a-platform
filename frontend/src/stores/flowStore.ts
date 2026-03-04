@@ -16,12 +16,27 @@ interface FlowState {
   events: FlowEvent[];
 }
 
+interface InteractionOption {
+  id: string;
+  label: string;
+  recommended?: boolean;
+}
+
+export interface InteractionQuestion {
+  id: string;
+  text: string;
+  question_type: 'free_text' | 'choice';
+  options?: InteractionOption[];
+  required?: boolean;
+}
+
 interface PendingInteraction {
   interaction_id: string;
   flow_id: string;
   interaction_type: string;
   prompt: string;
-  options?: { id: string; label: string; recommended?: boolean }[];
+  options?: InteractionOption[];
+  questions?: InteractionQuestion[];
 }
 
 interface FlowStore {

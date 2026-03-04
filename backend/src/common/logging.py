@@ -1,9 +1,17 @@
 """Structured logging setup."""
 
+import logging
 import structlog
 
 
 def setup_logging(debug: bool = False):
+    # Configure Python standard logging so libraries using logging.getLogger() also output
+    log_level = logging.DEBUG if debug else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+    )
+
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

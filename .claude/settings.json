@@ -29,7 +29,10 @@
       "Bash(python -c \"import google.adk.tools.mcp_tool; print\\(dir\\(google.adk.tools.mcp_tool\\)\\)\")",
       "Bash(python -c \"from google.adk.tools.mcp_tool import McpToolset; help\\(McpToolset.__init__\\)\")",
       "Bash(python -c \"from google.adk.tools.mcp_tool import StdioConnectionParams; help\\(StdioConnectionParams\\)\")",
-      "Bash(python -c \"import dotenv; print\\(''OK:'', dotenv.__file__\\)\")"
+      "Bash(python -c \"import dotenv; print\\(''OK:'', dotenv.__file__\\)\")",
+      "Bash(python3 -c \"import google.adk; print\\(google.adk.__file__\\)\")",
+      "Read(//c/@wecan/@zanni-ai/ccc-ai/.venv/Lib/site-packages/**)",
+      "Read(//c/@wecan/@zanni-ai/ccc-ai/.venv/Lib/site-packages//**)"
     ]
   }
 }

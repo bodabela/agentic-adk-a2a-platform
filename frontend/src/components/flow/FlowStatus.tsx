@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useFlowStore, type FlowEvent } from '../../stores/flowStore';
+import { useFlowStore, type FlowEvent, type InteractionQuestion } from '../../stores/flowStore';
 
 /** Human-readable summary for each flow event type. */
 function eventSummary(evt: FlowEvent): string {
@@ -9,17 +9,33 @@ function eventSummary(evt: FlowEvent): string {
       return `Flow "${d.flow_name}" started`;
     case 'flow_state_entered':
       return `Entered state: ${d.state} (${d.node_type})`;
-    case 'flow_agent_task_started':
-      return `Agent "${d.agent}" started — ${(d.input_summary as string) || ''}`;
+    case 'flow_agent_task_started': {
+      const input = d.input as Record<string, unknown> | undefined;
+      const inputStr = input ? JSON.stringify(input, null, 2) : '';
+      return `Agent "${d.agent}" started\n${inputStr}`;
+    }
     case 'flow_agent_task_completed': {
       const files = (d.workspace_files as string[]) || [];
       const fileLine = files.length > 0 ? `\nFiles: ${files.join(', ')}` : '';
       return `Agent "${d.agent}" completed${d.output_summary ? `\n${d.output_summary}` : ''}${fileLine}`;
     }
+    case 'flow_agent_thinking':
+      return `${d.agent} thinking: ${d.text}`;
+    case 'flow_agent_tool_use':
+      return `${d.agent} calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`;
+    case 'flow_agent_tool_result': {
+      const resp = typeof d.tool_response === 'string'
+        ? d.tool_response
+        : JSON.stringify(d.tool_response || '', null, 2);
+      const truncated = resp.length > 300 ? resp.slice(0, 300) + '...' : resp;
+      return `${d.agent} tool result [${d.tool_name}]: ${truncated}`;
+    }
     case 'flow_llm_decision':
       return `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''} [${d.provider}/${d.model}]`;
     case 'flow_input_required':
       return `Waiting for user input: ${d.prompt || d.interaction_type}`;
+    case 'flow_user_response':
+      return `User responded: ${d.response}`;
     case 'flow_completed':
       return `Flow completed (${d.status})`;
     case 'flow_retry_exceeded':
@@ -27,6 +43,100 @@ function eventSummary(evt: FlowEvent): string {
     default:
       return evt.event_type;
   }
+}
+
+/** Renders a form with one input per question, submitted together. */
+function MultiQuestionForm({
+  interaction,
+  answers,
+  onAnswerChange,
+  onSubmit,
+}: {
+  interaction: { questions?: InteractionQuestion[] };
+  answers: Record<string, string>;
+  onAnswerChange: (questionId: string, value: string) => void;
+  onSubmit: () => void;
+}) {
+  const questions = interaction.questions ?? [];
+  const allRequired = questions.filter((q) => q.required !== false);
+  const allAnswered = allRequired.every((q) => (answers[q.id] ?? '').trim() !== '');
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (allAnswered) onSubmit();
+      }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+    >
+      {questions.map((q, idx) => (
+        <div key={q.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <label style={{ color: '#cbd5e1', fontSize: '0.8rem', fontWeight: 500 }}>
+            {idx + 1}. {q.text}
+            {q.required !== false && <span style={{ color: '#f87171' }}> *</span>}
+          </label>
+
+          {q.question_type === 'choice' && q.options && q.options.length > 0 ? (
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {q.options.map((opt) => (
+                <button
+                  type="button"
+                  key={opt.id}
+                  onClick={() => onAnswerChange(q.id, opt.id)}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    background: answers[q.id] === opt.id ? '#2563eb' : '#334155',
+                    color: '#e2e8f0',
+                    border: answers[q.id] === opt.id ? '2px solid #60a5fa' : '1px solid #475569',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <input
+              type="text"
+              placeholder="Type your answer..."
+              value={answers[q.id] ?? ''}
+              onChange={(e) => onAnswerChange(q.id, e.target.value)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                background: '#1e293b',
+                border: '1px solid #475569',
+                borderRadius: 6,
+                color: '#e2e8f0',
+                fontSize: '0.85rem',
+                outline: 'none',
+              }}
+            />
+          )}
+        </div>
+      ))}
+
+      <button
+        type="submit"
+        disabled={!allAnswered}
+        style={{
+          padding: '0.5rem 1rem',
+          background: allAnswered ? '#f59e0b' : '#44403c',
+          color: allAnswered ? '#1c1917' : '#78716c',
+          border: 'none',
+          borderRadius: 6,
+          cursor: allAnswered ? 'pointer' : 'not-allowed',
+          fontSize: '0.8rem',
+          fontWeight: 600,
+          alignSelf: 'flex-start',
+          marginTop: '0.25rem',
+        }}
+      >
+        Submit All Answers
+      </button>
+    </form>
+  );
 }
 
 function FlowEventList({ events }: { events: FlowEvent[] }) {
@@ -45,6 +155,17 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
         const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
         const summary = eventSummary(evt);
 
+        // Color coding for streaming events
+        let eventColor = '#60a5fa'; // default blue
+        let borderColor = '#1e293b';
+        if (evt.event_type === 'flow_agent_thinking') {
+          eventColor = '#a78bfa'; borderColor = '#2e1065';
+        } else if (evt.event_type === 'flow_agent_tool_use') {
+          eventColor = '#fbbf24'; borderColor = '#451a03';
+        } else if (evt.event_type === 'flow_agent_tool_result') {
+          eventColor = '#34d399'; borderColor = '#064e3b';
+        }
+
         return (
           <div
             key={i}
@@ -52,14 +173,14 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
               fontSize: '0.7rem',
               padding: '0.375rem 0.5rem',
               background: '#020617',
-              border: '1px solid #1e293b',
+              border: `1px solid ${borderColor}`,
               borderRadius: 4,
               fontFamily: 'monospace',
             }}
           >
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: summary ? '0.25rem' : 0 }}>
               <span style={{ color: '#475569' }}>{time}</span>
-              <span style={{ color: '#60a5fa' }}>{evt.event_type}</span>
+              <span style={{ color: eventColor }}>{evt.event_type}</span>
             </div>
             {summary && (
               <div style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -79,9 +200,11 @@ export function FlowStatus() {
   const resolveInteraction = useFlowStore((s) => s.resolveInteraction);
 
   const [freeTextValues, setFreeTextValues] = useState<Record<string, string>>({});
+  // For multi_question: { [interaction_id]: { [question_id]: answer } }
+  const [multiAnswers, setMultiAnswers] = useState<Record<string, Record<string, string>>>({});
   const [expandedFlows, setExpandedFlows] = useState<Record<string, boolean>>({});
 
-  const flows = Object.values(activeFlows);
+  const flows = Object.values(activeFlows).reverse();
 
   const toggleExpanded = (flowId: string) => {
     setExpandedFlows((prev) => ({ ...prev, [flowId]: !prev[flowId] }));
@@ -210,7 +333,40 @@ export function FlowStatus() {
                 {interaction.prompt || 'The agent has a question. Please provide more details.'}
               </div>
 
-              {interaction.options && interaction.options.length > 0 ? (
+              {/* ── Multi-question form ── */}
+              {interaction.interaction_type === 'multi_question' && interaction.questions && interaction.questions.length > 0 ? (
+                <MultiQuestionForm
+                  interaction={interaction}
+                  answers={multiAnswers[interaction.interaction_id] ?? {}}
+                  onAnswerChange={(questionId, value) =>
+                    setMultiAnswers((prev) => ({
+                      ...prev,
+                      [interaction.interaction_id]: {
+                        ...prev[interaction.interaction_id],
+                        [questionId]: value,
+                      },
+                    }))
+                  }
+                  onSubmit={async () => {
+                    const answers = multiAnswers[interaction.interaction_id] ?? {};
+                    await fetch('/api/flows/interact', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        interaction_id: interaction.interaction_id,
+                        response: answers,
+                      }),
+                    });
+                    resolveInteraction(interaction.interaction_id);
+                    setMultiAnswers((prev) => {
+                      const next = { ...prev };
+                      delete next[interaction.interaction_id];
+                      return next;
+                    });
+                  }}
+                />
+              ) : interaction.options && interaction.options.length > 0 ? (
+                /* ── Choice buttons ── */
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {interaction.options.map((opt) => (
                     <button
@@ -241,6 +397,7 @@ export function FlowStatus() {
                   ))}
                 </div>
               ) : (
+                /* ── Free text input ── */
                 <form
                   style={{ display: 'flex', gap: '0.5rem' }}
                   onSubmit={async (e) => {

@@ -80,12 +80,22 @@ class LLMDecisionNode(BaseModel):
     side_effect: SideEffect | None = None
 
 
+class InteractionQuestion(BaseModel):
+    """A single question within a multi_question interaction."""
+    id: str
+    text: str
+    question_type: str = "free_text"  # "free_text" | "choice"
+    options: list[dict[str, Any]] = Field(default_factory=list)
+    required: bool = True
+
+
 class HumanInteractionNode(BaseModel):
     type: Literal["human_interaction"] = "human_interaction"
-    interaction_type: str = "free_text"
+    interaction_type: str = "free_text"  # "free_text" | "choice" | "multi_question"
     prompt: str = ""
     context: str | None = None
     options: list[dict[str, Any]] = Field(default_factory=list)
+    questions: list[InteractionQuestion | dict[str, Any]] | str = Field(default_factory=list)
     file_upload: dict[str, Any] | None = None
     timeout_seconds: int | None = None
     default_value: str | None = None

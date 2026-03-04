@@ -253,7 +253,7 @@ class FlowEngine:
                 "flow_id": flow_id,
                 "state": state_name,
                 "agent": node.agent,
-                "input_summary": str(resolved_input)[:200],
+                "input": resolved_input,
             },
         )
 
@@ -282,37 +282,86 @@ class FlowEngine:
 
         return node.on_complete
 
+    def _build_a2a_prompt(self, task_input: dict[str, Any]) -> str:
+        """Build the prompt text from task input, formatting Q&A pairs if present."""
+        prompt_parts = []
+        q_text_map: dict[str, str] = {}
+        raw_questions = task_input.get("user_feedback_questions")
+        if isinstance(raw_questions, list):
+            for q in raw_questions:
+                if isinstance(q, dict):
+                    q_text_map[q.get("id", "")] = q.get("text", "")
+
+        for k, v in task_input.items():
+            if not v:
+                continue
+            if k == "user_feedback_questions":
+                continue
+            if k == "user_feedback" and isinstance(v, dict):
+                lines = ["user_feedback:"]
+                for q_id, answer in v.items():
+                    q_text = q_text_map.get(q_id, q_id)
+                    lines.append(f"  - {q_text} -> {answer}")
+                prompt_parts.append("\n".join(lines))
+            else:
+                prompt_parts.append(f"{k}: {v}")
+        return "\n".join(prompt_parts) or str(task_input)
+
+    @staticmethod
+    def _parse_a2a_result(data: dict, task_id: str) -> dict[str, Any]:
+        """Parse JSON-RPC result dict into a standard output dict."""
+        result = data.get("result", {})
+        artifacts = result.get("artifacts", [])
+        texts = []
+        for artifact in artifacts:
+            for part in artifact.get("parts", []):
+                if part.get("type") == "text":
+                    texts.append(part["text"])
+
+        result_text = "\n".join(texts) if texts else str(result)
+        output: dict[str, Any] = {
+            "result": result_text,
+            "task_id": task_id,
+            "status": result.get("status", {}).get("state", "unknown"),
+        }
+
+        agent_questions = FlowEngine._extract_agent_questions(result_text)
+        if agent_questions:
+            output["agent_questions"] = agent_questions
+        return output
+
     async def _call_agent_a2a(
         self,
         agent_name: str,
         task_input: dict[str, Any],
         flow_id: str,
     ) -> dict[str, Any]:
-        """Call an agent via A2A JSON-RPC protocol."""
+        """Call an agent via A2A, preferring SSE streaming when available."""
         import httpx
 
-        # Resolve agent URL from registry
+        # Resolve agent URL and capabilities from registry
         a2a_url: str | None = None
+        supports_streaming = False
         if self.agent_registry:
             agent_info = self.agent_registry.get_agent(agent_name)
             if agent_info:
                 a2a_url = agent_info.a2a_url
+                supports_streaming = agent_info.a2a_capabilities.get("streaming", False)
 
         if not a2a_url:
             logger.warning("[A2A] Agent '%s' not found in registry", agent_name)
             return {"result": f"Agent '{agent_name}' not found in registry", **task_input}
 
-        logger.info("[A2A] Calling %s at %s", agent_name, a2a_url)
+        logger.info("[A2A] Calling %s at %s (streaming=%s)", agent_name, a2a_url, supports_streaming)
 
-        # Build A2A JSON-RPC request
-        task_id = str(uuid.uuid4())
-        prompt_parts = [f"{k}: {v}" for k, v in task_input.items() if v]
-        prompt_text = "\n".join(prompt_parts) or str(task_input)
+        task_id = flow_id
+        prompt_text = self._build_a2a_prompt(task_input)
+        logger.info("[A2A] %s prompt:\n%s", agent_name, prompt_text[:500])
 
         payload = {
             "jsonrpc": "2.0",
             "id": f"flow-{flow_id}",
-            "method": "tasks/send",
+            "method": "tasks/sendSubscribe" if supports_streaming else "tasks/send",
             "params": {
                 "id": task_id,
                 "message": {
@@ -323,37 +372,134 @@ class FlowEngine:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(a2a_url, json=payload)
-                logger.info("[A2A] %s response status=%s", agent_name, resp.status_code)
-                logger.debug("[A2A] %s raw response: %s", agent_name, resp.text[:2000])
-                resp.raise_for_status()
-                data = resp.json()
-
-            # Parse A2A JSON-RPC response
-            result = data.get("result", {})
-            artifacts = result.get("artifacts", [])
-
-            # Extract text from artifact parts
-            texts = []
-            for artifact in artifacts:
-                for part in artifact.get("parts", []):
-                    if part.get("type") == "text":
-                        texts.append(part["text"])
-
-            output = {
-                "result": "\n".join(texts) if texts else str(result),
-                "task_id": task_id,
-                "status": result.get("status", {}).get("state", "unknown"),
-            }
-            logger.info("[A2A] %s output: %s", agent_name, str(output)[:500])
-            return output
-        except httpx.ConnectError:
-            logger.error("[A2A] %s not reachable at %s", agent_name, a2a_url)
-            return {"result": f"Agent '{agent_name}' is not reachable at {a2a_url}", **task_input}
+            if supports_streaming:
+                return await self._call_agent_a2a_streaming(
+                    agent_name, a2a_url, payload, task_id, flow_id,
+                )
+            else:
+                return await self._call_agent_a2a_sync(
+                    agent_name, a2a_url, payload, task_id,
+                )
         except Exception as e:
+            if "ConnectError" in type(e).__name__:
+                logger.error("[A2A] %s not reachable at %s", agent_name, a2a_url)
+                return {"result": f"Agent '{agent_name}' is not reachable at {a2a_url}", **task_input}
             logger.error("[A2A] %s call failed: %s", agent_name, e)
             return {"result": f"A2A call to '{agent_name}' failed: {e}", **task_input}
+
+    async def _call_agent_a2a_streaming(
+        self,
+        agent_name: str,
+        a2a_url: str,
+        payload: dict,
+        task_id: str,
+        flow_id: str,
+    ) -> dict[str, Any]:
+        """Consume SSE stream from agent's /tasks/sendSubscribe endpoint."""
+        import httpx
+
+        stream_url = f"{a2a_url}/tasks/sendSubscribe"
+        logger.info("[A2A-SSE] Streaming from %s", stream_url)
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+            async with client.stream("POST", stream_url, json=payload) as resp:
+                resp.raise_for_status()
+
+                event_type = ""
+                data_lines: list[str] = []
+
+                async for raw_line in resp.aiter_lines():
+                    line = raw_line.rstrip("\r\n") if isinstance(raw_line, str) else raw_line.decode().rstrip("\r\n")
+
+                    if line.startswith("event:"):
+                        event_type = line[len("event:"):].strip()
+                    elif line.startswith("data:"):
+                        data_lines.append(line[len("data:"):].strip())
+                    elif line == "":
+                        # End of SSE event block
+                        if event_type and data_lines:
+                            data_str = "\n".join(data_lines)
+                            try:
+                                data = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                data = {"raw": data_str}
+
+                            if event_type == "thinking":
+                                await self.event_bus.emit("flow_agent_thinking", {
+                                    "flow_id": flow_id,
+                                    "agent": agent_name,
+                                    "text": data.get("text", ""),
+                                    "author": data.get("author", ""),
+                                })
+                            elif event_type == "tool_call":
+                                await self.event_bus.emit("flow_agent_tool_use", {
+                                    "flow_id": flow_id,
+                                    "agent": agent_name,
+                                    "tool_name": data.get("tool_name", ""),
+                                    "tool_args": data.get("tool_args", {}),
+                                    "author": data.get("author", ""),
+                                })
+                            elif event_type == "tool_result":
+                                await self.event_bus.emit("flow_agent_tool_result", {
+                                    "flow_id": flow_id,
+                                    "agent": agent_name,
+                                    "tool_name": data.get("tool_name", ""),
+                                    "tool_response": data.get("tool_response", ""),
+                                    "author": data.get("author", ""),
+                                })
+                            elif event_type == "final":
+                                output = self._parse_a2a_result(data, task_id)
+                                logger.info("[A2A-SSE] %s final: %s", agent_name, str(output)[:500])
+                                return output
+
+                        event_type = ""
+                        data_lines = []
+
+        logger.warning("[A2A-SSE] %s stream ended without final event", agent_name)
+        return {"result": f"Agent '{agent_name}' stream ended unexpectedly", "task_id": task_id, "status": "failed"}
+
+    async def _call_agent_a2a_sync(
+        self,
+        agent_name: str,
+        a2a_url: str,
+        payload: dict,
+        task_id: str,
+    ) -> dict[str, Any]:
+        """Non-streaming POST to agent's / endpoint (fallback)."""
+        import httpx
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(a2a_url, json=payload)
+            logger.info("[A2A] %s response status=%s", agent_name, resp.status_code)
+            logger.debug("[A2A] %s raw response: %s", agent_name, resp.text[:2000])
+            resp.raise_for_status()
+            data = resp.json()
+
+        output = self._parse_a2a_result(data, task_id)
+        logger.info("[A2A] %s output: %s", agent_name, str(output)[:500])
+        return output
+
+    @staticmethod
+    def _extract_agent_questions(text: str) -> list[dict[str, Any]] | None:
+        """Extract structured questions from agent response text.
+
+        Looks for a JSON block containing {"agent_questions": [...]}.
+        """
+        import re
+
+        # Find JSON block with agent_questions key
+        pattern = r'\{[^{}]*"agent_questions"\s*:\s*\[.*?\]\s*\}'
+        match = re.search(pattern, text, re.DOTALL)
+        if not match:
+            return None
+        try:
+            parsed = json.loads(match.group())
+            questions = parsed.get("agent_questions", [])
+            if isinstance(questions, list) and len(questions) > 0:
+                return questions
+        except json.JSONDecodeError:
+            logger.warning("[A2A] Failed to parse agent_questions JSON: %s", match.group()[:200])
+        return None
 
     def _scan_workspace(self, agent_name: str) -> list[dict[str, str]]:
         """Scan the agent's workspace and return file paths + contents."""
@@ -403,7 +549,8 @@ class FlowEngine:
             f"Context:\n{resolved_context}\n\n"
             f"Decision prompt:\n{node.decision_prompt}\n\n"
             f"You MUST respond with exactly one of these choices: {available_transitions}\n"
-            f'Respond with JSON: {{"decision": "<choice>", "reason": "<brief explanation or question for the user>"}}\n'
+            f'Respond with JSON: {{"decision": "<choice>", "reason": "<brief explanation>"}}\n'
+            f'If decision is "ask_user", also include "questions": [{{"id": "q1", "text": "...", "question_type": "free_text"}}]\n'
             f"Respond with only the JSON, nothing else."
         )
 
@@ -472,11 +619,16 @@ class FlowEngine:
                 )
 
         reason = decision_output.get("reason", "").strip()
+        questions = decision_output.get("questions", [])
 
-        context.set_state_output(state_name, {
+        state_output: dict[str, Any] = {
             "decision": decision,
             "reason": reason,
-        })
+        }
+        if questions:
+            state_output["questions"] = questions
+
+        context.set_state_output(state_name, state_output)
 
         await self.event_bus.emit(
             "flow_llm_decision",
@@ -504,17 +656,36 @@ class FlowEngine:
         interaction_id = str(uuid.uuid4())
         resolved_prompt = context.resolve(node.prompt) if node.prompt else ""
 
-        await self.event_bus.emit(
-            "flow_input_required",
-            {
-                "flow_id": flow_id,
-                "state": state_name,
-                "interaction_id": interaction_id,
-                "interaction_type": node.interaction_type,
-                "prompt": str(resolved_prompt),
-                "options": node.options,
-            },
-        )
+        # Build event payload
+        event_payload: dict[str, Any] = {
+            "flow_id": flow_id,
+            "state": state_name,
+            "interaction_id": interaction_id,
+            "interaction_type": node.interaction_type,
+            "prompt": str(resolved_prompt),
+            "options": node.options,
+        }
+
+        # For multi_question: resolve questions (may be a template string or a list)
+        if node.interaction_type == "multi_question":
+            raw_questions = node.questions
+            # If it's a template string, resolve it first to get the list
+            if isinstance(raw_questions, str):
+                raw_questions = context.resolve(raw_questions)
+            # Fallback: pull agent_questions from generate_code output
+            if not raw_questions or raw_questions == "":
+                gen_output = context.states.get("generate_code", {}).get("output", {})
+                if isinstance(gen_output, dict):
+                    raw_questions = gen_output.get("agent_questions", [])
+            if isinstance(raw_questions, list) and len(raw_questions) > 0:
+                resolved_questions = []
+                for q in raw_questions:
+                    q_dict = q.model_dump() if hasattr(q, "model_dump") else dict(q)
+                    q_dict["text"] = str(context.resolve(q_dict.get("text", "")))
+                    resolved_questions.append(q_dict)
+                event_payload["questions"] = resolved_questions
+
+        await self.event_bus.emit("flow_input_required", event_payload)
 
         future: asyncio.Future = asyncio.get_event_loop().create_future()
         self._pending_interactions[interaction_id] = future
@@ -529,7 +700,20 @@ class FlowEngine:
         finally:
             self._pending_interactions.pop(interaction_id, None)
 
-        context.set_state_output(state_name, {"response": response})
+        state_output: dict[str, Any] = {"response": response}
+        # Preserve resolved questions so downstream can map answers to question texts
+        if "questions" in event_payload:
+            state_output["questions"] = event_payload["questions"]
+        context.set_state_output(state_name, state_output)
+
+        await self.event_bus.emit(
+            "flow_user_response",
+            {
+                "flow_id": flow_id,
+                "state": state_name,
+                "response": str(response)[:1000],
+            },
+        )
 
         if node.transitions and isinstance(response, dict) and "id" in response:
             return node.transitions.get(response["id"], node.on_response)

@@ -6,8 +6,8 @@ module:
 
 agent:
   enabled: true
-  model: "gemini-2.5-flash"
-  model_fallback: "gemini-2.5-pro"
+  model: "gemini-3.1-flash-lite-preview"
+  model_fallback: "gemini-2.5-flash"
   max_tokens: 8192
   mode: "on_demand"
   capabilities:
@@ -24,14 +24,18 @@ agent:
       - "selection"
       - "free_text"
 
+a2a:
+  host: "127.0.0.1"
+  port: 8001
+
 tools:
   mcp:
     transport: "stdio"           # "stdio" = child process, "sse" = remote HTTP
     server: "tools/mcp_server.py"  # stdio: script path relative to module dir
     # url: "http://localhost:8010/sse"  # sse: uncomment when running MCP server separately
     tools:
-      - name: "generate_code_files"
-        description: "Generate code file contents based on a specification"
+      - name: "list_workspace_files"
+        description: "List all files in the workspace"
       - name: "read_code_file"
         description: "Read a code file's contents from the workspace"
       - name: "write_code_file"

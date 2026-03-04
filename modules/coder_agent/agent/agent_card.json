@@ -2,7 +2,6 @@
   "name": "coder_agent",
   "description": "Code generation, modification, and hotfix creation",
   "version": "0.1.0",
-  "url": "http://localhost:8001",
   "capabilities": {
     "streaming": true,
     "pushNotifications": false,

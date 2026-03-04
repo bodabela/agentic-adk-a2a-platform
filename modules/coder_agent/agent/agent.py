@@ -17,12 +17,18 @@ def load_system_prompt() -> str:
     return prompt_path.read_text(encoding="utf-8")
 
 
-def _build_mcp_toolset() -> McpToolset:
-    """Build MCP toolset from module.yaml config — supports both stdio and sse."""
-    manifest = yaml.safe_load(
+def _load_manifest() -> dict:
+    return yaml.safe_load(
         (MODULE_DIR / "module.yaml").read_text(encoding="utf-8")
     )
-    mcp_conf = manifest.get("tools", {}).get("mcp", {})
+
+
+_manifest = _load_manifest()
+
+
+def _build_mcp_toolset() -> McpToolset:
+    """Build MCP toolset from module.yaml config — supports both stdio and sse."""
+    mcp_conf = _manifest.get("tools", {}).get("mcp", {})
     transport = mcp_conf.get("transport", "stdio")
 
     if transport == "sse":
@@ -47,9 +53,11 @@ def _build_mcp_toolset() -> McpToolset:
 
 code_generator_mcp = _build_mcp_toolset()
 
-# ADK Agent definition
+# ADK Agent definition — model from module.yaml (agent.model)
+_agent_model = _manifest.get("agent", {}).get("model", "gemini-2.5-flash")
+
 root_agent = Agent(
-    model="gemini-2.0-flash",
+    model=_agent_model,
     name="coder_agent",
     description=(
         "Code generation and modification. Can generate, review, and modify code "
