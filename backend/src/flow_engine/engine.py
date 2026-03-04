@@ -80,7 +80,12 @@ class FlowEngine:
         )
         await self.state_store.save(exec_state)
         await self.event_bus.emit(
-            "flow_started", {"flow_id": flow_id, "flow_name": flow.name}
+            "flow_started", {
+                "flow_id": flow_id,
+                "flow_name": flow.name,
+                "provider": self.runtime_provider or flow.config.provider or "",
+                "model": self.runtime_model or flow.config.get_effective_model() or "",
+            }
         )
 
         current_state = flow.get_initial_state()
@@ -336,56 +341,65 @@ class FlowEngine:
         task_input: dict[str, Any],
         flow_id: str,
     ) -> dict[str, Any]:
-        """Call an agent via A2A, preferring SSE streaming when available."""
+        """Call an agent via A2A, always using SSE streaming with sync fallback."""
         import httpx
 
-        # Resolve agent URL and capabilities from registry
+        # Resolve agent URL from registry
         a2a_url: str | None = None
-        supports_streaming = False
         if self.agent_registry:
             agent_info = self.agent_registry.get_agent(agent_name)
             if agent_info:
                 a2a_url = agent_info.a2a_url
-                supports_streaming = agent_info.a2a_capabilities.get("streaming", False)
+                # Refresh live card if agent wasn't reachable at discovery time
+                if not agent_info.is_live:
+                    await self.agent_registry.refresh_agent(agent_name)
 
         if not a2a_url:
             logger.warning("[A2A] Agent '%s' not found in registry", agent_name)
             return {"result": f"Agent '{agent_name}' not found in registry", **task_input}
 
-        logger.info("[A2A] Calling %s at %s (streaming=%s)", agent_name, a2a_url, supports_streaming)
+        logger.info("[A2A] Calling %s at %s (streaming=always)", agent_name, a2a_url)
 
         task_id = flow_id
         prompt_text = self._build_a2a_prompt(task_input)
         logger.info("[A2A] %s prompt:\n%s", agent_name, prompt_text[:500])
 
+        params: dict[str, Any] = {
+            "id": task_id,
+            "message": {
+                "role": "user",
+                "parts": [{"type": "text", "text": prompt_text}],
+            },
+        }
+        # Pass runtime model to the agent so it uses the UI-selected model
+        if self.runtime_model:
+            params["model"] = self.runtime_model
+
         payload = {
             "jsonrpc": "2.0",
             "id": f"flow-{flow_id}",
-            "method": "tasks/sendSubscribe" if supports_streaming else "tasks/send",
-            "params": {
-                "id": task_id,
-                "message": {
-                    "role": "user",
-                    "parts": [{"type": "text", "text": prompt_text}],
-                },
-            },
+            "method": "tasks/sendSubscribe",
+            "params": params,
         }
 
         try:
-            if supports_streaming:
-                return await self._call_agent_a2a_streaming(
-                    agent_name, a2a_url, payload, task_id, flow_id,
-                )
-            else:
-                return await self._call_agent_a2a_sync(
-                    agent_name, a2a_url, payload, task_id,
-                )
+            return await self._call_agent_a2a_streaming(
+                agent_name, a2a_url, payload, task_id, flow_id,
+            )
         except Exception as e:
             if "ConnectError" in type(e).__name__:
                 logger.error("[A2A] %s not reachable at %s", agent_name, a2a_url)
                 return {"result": f"Agent '{agent_name}' is not reachable at {a2a_url}", **task_input}
-            logger.error("[A2A] %s call failed: %s", agent_name, e)
-            return {"result": f"A2A call to '{agent_name}' failed: {e}", **task_input}
+            logger.error("[A2A] %s streaming call failed, trying sync fallback: %s", agent_name, e)
+            # Fall back to sync if streaming fails for any reason
+            try:
+                payload["method"] = "tasks/send"
+                return await self._call_agent_a2a_sync(
+                    agent_name, a2a_url, payload, task_id,
+                )
+            except Exception as sync_e:
+                logger.error("[A2A] %s sync fallback also failed: %s", agent_name, sync_e)
+                return {"result": f"A2A call to '{agent_name}' failed: {e}", **task_input}
 
     async def _call_agent_a2a_streaming(
         self,
@@ -424,13 +438,24 @@ class FlowEngine:
                             except json.JSONDecodeError:
                                 data = {"raw": data_str}
 
-                            if event_type == "thinking":
+                            if event_type == "streaming_text":
+                                await self.event_bus.emit("flow_agent_streaming_text", {
+                                    "flow_id": flow_id,
+                                    "agent": agent_name,
+                                    "text": data.get("text", ""),
+                                    "author": data.get("author", ""),
+                                    "is_thought": data.get("is_thought", False),
+                                })
+                                await asyncio.sleep(0)
+                            elif event_type == "thinking":
                                 await self.event_bus.emit("flow_agent_thinking", {
                                     "flow_id": flow_id,
                                     "agent": agent_name,
                                     "text": data.get("text", ""),
                                     "author": data.get("author", ""),
+                                    "is_thought": data.get("is_thought", False),
                                 })
+                                await asyncio.sleep(0)
                             elif event_type == "tool_call":
                                 await self.event_bus.emit("flow_agent_tool_use", {
                                     "flow_id": flow_id,
@@ -439,6 +464,7 @@ class FlowEngine:
                                     "tool_args": data.get("tool_args", {}),
                                     "author": data.get("author", ""),
                                 })
+                                await asyncio.sleep(0)  # flush to frontend
                             elif event_type == "tool_result":
                                 await self.event_bus.emit("flow_agent_tool_result", {
                                     "flow_id": flow_id,
@@ -447,6 +473,7 @@ class FlowEngine:
                                     "tool_response": data.get("tool_response", ""),
                                     "author": data.get("author", ""),
                                 })
+                                await asyncio.sleep(0)  # flush to frontend
                             elif event_type == "final":
                                 output = self._parse_a2a_result(data, task_id)
                                 logger.info("[A2A-SSE] %s final: %s", agent_name, str(output)[:500])

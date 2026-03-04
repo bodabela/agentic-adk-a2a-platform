@@ -1,5 +1,6 @@
 """Entry point to expose coder_agent as an A2A server."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -38,32 +39,37 @@ async def health():
 
 # --- A2A JSON-RPC handler ---
 
-_runner = None
+# Cache runners per model: { model_name: Runner }
+_runners: dict[str, object] = {}
 # Map task_id → session_id for conversation continuity
 _task_sessions: dict[str, str] = {}
 
 
-def _get_runner():
-    """Lazy-init the ADK Runner for coder_agent."""
-    global _runner
-    if _runner is not None:
-        return _runner
+def _get_runner(model: str | None = None):
+    """Get or create an ADK Runner, optionally for a specific model."""
+    from modules.coder_agent.agent.agent import DEFAULT_MODEL
+
+    requested_model = model or DEFAULT_MODEL
+    if requested_model in _runners:
+        return _runners[requested_model]
 
     try:
         from google.adk.runners import Runner
         from google.adk.sessions import InMemorySessionService
-        from modules.coder_agent.agent.agent import root_agent
+        from modules.coder_agent.agent.agent import create_agent
 
+        agent = create_agent(requested_model)
         session_service = InMemorySessionService()
-        _runner = Runner(
-            agent=root_agent,
+        runner = Runner(
+            agent=agent,
             app_name="coder_agent_a2a",
             session_service=session_service,
         )
-        logger.info("ADK Runner initialized for coder_agent")
-        return _runner
+        _runners[requested_model] = runner
+        logger.info("ADK Runner initialized for coder_agent (model=%s)", requested_model)
+        return runner
     except Exception as e:
-        logger.error("Failed to initialize ADK Runner: %s", e)
+        logger.error("Failed to initialize ADK Runner (model=%s): %s", requested_model, e)
         return None
 
 
@@ -84,15 +90,16 @@ async def a2a_endpoint(request: Request):
             "error": {"code": -32601, "message": f"Method not found: {method}"},
         })
 
-    # Extract user message
+    # Extract user message and optional model override
     message = params.get("message", {})
     parts = message.get("parts", [])
     user_text = " ".join(p.get("text", "") for p in parts if p.get("type") == "text")
     task_id = params.get("id", str(uuid.uuid4()))
+    model_override = params.get("model")
 
-    logger.info("[A2A] task=%s prompt=%s", task_id, user_text[:200])
+    logger.info("[A2A] task=%s model=%s prompt=%s", task_id, model_override, user_text[:200])
 
-    runner = _get_runner()
+    runner = _get_runner(model_override)
     if runner is None:
         # No ADK available — return the prompt as-is (for testing)
         return JSONResponse({
@@ -210,10 +217,11 @@ async def a2a_stream_endpoint(request: Request):
     parts = message.get("parts", [])
     user_text = " ".join(p.get("text", "") for p in parts if p.get("type") == "text")
     task_id = params.get("id", str(uuid.uuid4()))
+    model_override = params.get("model")
 
-    logger.info("[A2A-SSE] task=%s prompt=%s", task_id, user_text[:200])
+    logger.info("[A2A-SSE] task=%s model=%s prompt=%s", task_id, model_override, user_text[:200])
 
-    runner = _get_runner()
+    runner = _get_runner(model_override)
     if runner is None:
         async def no_runner_stream():
             yield {
@@ -231,6 +239,7 @@ async def a2a_stream_endpoint(request: Request):
 
     async def event_stream():
         try:
+            from google.adk.agents.run_config import RunConfig, StreamingMode
             from google.genai import types as genai_types
 
             session = await _get_or_create_session(runner, task_id)
@@ -245,9 +254,31 @@ async def a2a_stream_endpoint(request: Request):
                 user_id="flow_engine",
                 session_id=session.id,
                 new_message=user_content,
+                run_config=RunConfig(streaming_mode=StreamingMode.SSE),
             ):
                 author = getattr(event, "author", None) or ""
                 content = getattr(event, "content", None)
+                is_partial = getattr(event, "partial", False)
+
+                # Partial text events — stream token-by-token
+                if is_partial and content and hasattr(content, "parts"):
+                    for part in content.parts:
+                        if hasattr(part, "text") and part.text:
+                            # Skip partial function_call argument streaming
+                            if hasattr(part, "function_call") and part.function_call:
+                                continue
+                            is_thought = getattr(part, "thought", False)
+                            yield {
+                                "event": "streaming_text",
+                                "data": json.dumps({
+                                    "task_id": task_id,
+                                    "author": author,
+                                    "text": part.text,
+                                    "is_thought": bool(is_thought),
+                                }),
+                            }
+                            await asyncio.sleep(0)
+                    continue
 
                 if event.is_final_response():
                     if content and hasattr(content, "parts"):
@@ -256,18 +287,21 @@ async def a2a_stream_endpoint(request: Request):
                                 agent_response_parts.append(part.text)
                     continue
 
-                # Stream intermediate events
+                # Non-partial intermediate events (complete thinking, tool calls, results)
                 if content and hasattr(content, "parts"):
                     for part in content.parts:
                         if hasattr(part, "text") and part.text:
+                            is_thought = getattr(part, "thought", False)
                             yield {
                                 "event": "thinking",
                                 "data": json.dumps({
                                     "task_id": task_id,
                                     "author": author,
                                     "text": part.text,
+                                    "is_thought": bool(is_thought),
                                 }),
                             }
+                            await asyncio.sleep(0)
                         elif hasattr(part, "function_call") and part.function_call:
                             fc = part.function_call
                             yield {
@@ -279,6 +313,7 @@ async def a2a_stream_endpoint(request: Request):
                                     "tool_args": dict(fc.args) if fc.args else {},
                                 }),
                             }
+                            await asyncio.sleep(0)
                         elif hasattr(part, "function_response") and part.function_response:
                             fr = part.function_response
                             resp_data = fr.response
@@ -295,6 +330,7 @@ async def a2a_stream_endpoint(request: Request):
                                     "tool_response": resp_data,
                                 }, default=str),
                             }
+                            await asyncio.sleep(0)
 
             result_text = "\n".join(agent_response_parts) or "[No response from agent]"
             logger.info("[A2A-SSE] task=%s response=%s", task_id, result_text[:500])

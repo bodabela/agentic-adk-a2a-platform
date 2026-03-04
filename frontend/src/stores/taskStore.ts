@@ -20,6 +20,7 @@ interface TaskStore {
   activeTaskId: string | null;
   submitTask: (description: string) => Promise<string>;
   addEvent: (taskId: string, event: TaskEvent) => void;
+  appendStreamingText: (taskId: string, text: string, agent: string, isThought: boolean) => void;
   setActiveTask: (taskId: string | null) => void;
   updateTaskStatus: (taskId: string, status: string, error?: string) => void;
 }
@@ -59,6 +60,33 @@ export const useTaskStore = create<TaskStore>((set) => ({
         tasks: {
           ...state.tasks,
           [taskId]: { ...task, events: [...task.events, event] },
+        },
+      };
+    }),
+
+  appendStreamingText: (taskId, text, agent, isThought) =>
+    set((state) => {
+      const task = state.tasks[taskId];
+      if (!task) return state;
+      const events = [...task.events];
+      const last = events[events.length - 1];
+      if (last && last.event_type === 'streaming_text') {
+        const lastData = last.data as Record<string, unknown>;
+        events[events.length - 1] = {
+          ...last,
+          data: { ...lastData, text: (lastData.text as string) + text },
+        };
+      } else {
+        events.push({
+          event_type: 'streaming_text',
+          timestamp: new Date().toISOString(),
+          data: { agent, text, is_thought: isThought },
+        });
+      }
+      return {
+        tasks: {
+          ...state.tasks,
+          [taskId]: { ...task, events },
         },
       };
     }),

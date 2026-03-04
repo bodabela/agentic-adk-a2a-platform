@@ -103,41 +103,85 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
 
         logger.info("task_runner_start", task_id=task_id, session_id=session.id)
 
-        async for event in runner.run_async(
-            user_id="user", session_id=session.id, new_message=user_message
-        ):
-            event_type = type(event).__name__
+        from google.adk.agents.run_config import RunConfig, StreamingMode
 
-            # Extract meaningful details from the ADK event
+        async for event in runner.run_async(
+            user_id="user", session_id=session.id, new_message=user_message,
+            run_config=RunConfig(streaming_mode=StreamingMode.SSE),
+        ):
             author = getattr(event, "author", None) or ""
             content = getattr(event, "content", None)
-            text_parts = []
-            if content and hasattr(content, "parts"):
+            is_partial = getattr(event, "partial", False)
+
+            if not content or not hasattr(content, "parts"):
+                continue
+
+            # Partial text — stream token chunks
+            if is_partial:
                 for part in content.parts:
                     if hasattr(part, "text") and part.text:
-                        text_parts.append(part.text)
-                    elif hasattr(part, "function_call") and part.function_call:
-                        fc = part.function_call
-                        text_parts.append(f"call:{fc.name}({dict(fc.args) if fc.args else {}})")
-                    elif hasattr(part, "function_response") and part.function_response:
-                        fr = part.function_response
-                        text_parts.append(f"result:{fr.name}={fr.response}")
+                        if hasattr(part, "function_call") and part.function_call:
+                            continue  # skip partial function_call arg streaming
+                        is_thought = getattr(part, "thought", False)
+                        await event_bus.emit("task_event", {
+                            "task_id": task_id,
+                            "event_type": "streaming_text",
+                            "agent": author,
+                            "author": author,
+                            "text": part.text,
+                            "is_thought": bool(is_thought),
+                        })
+                        await asyncio.sleep(0)
+                continue
 
-            summary = " | ".join(text_parts) if text_parts else str(event)
-
-            logger.debug(
-                "task_event",
-                task_id=task_id,
-                event_type=event_type,
-                author=author,
-                summary=summary[:500],
-            )
-            await event_bus.emit("task_event", {
-                "task_id": task_id,
-                "event_type": event_type,
-                "author": author,
-                "summary": summary[:1000],
-            })
+            for part in content.parts:
+                if hasattr(part, "text") and part.text:
+                    is_thought = getattr(part, "thought", False)
+                    if is_thought or not event.is_final_response():
+                        await event_bus.emit("task_event", {
+                            "task_id": task_id,
+                            "event_type": "thinking",
+                            "agent": author,
+                            "author": author,
+                            "text": part.text,
+                            "is_thought": bool(is_thought),
+                        })
+                    else:
+                        await event_bus.emit("task_event", {
+                            "task_id": task_id,
+                            "event_type": "agent_response",
+                            "agent": author,
+                            "author": author,
+                            "text": part.text,
+                        })
+                    await asyncio.sleep(0)
+                elif hasattr(part, "function_call") and part.function_call:
+                    fc = part.function_call
+                    await event_bus.emit("task_event", {
+                        "task_id": task_id,
+                        "event_type": "tool_call",
+                        "agent": author,
+                        "author": author,
+                        "tool_name": fc.name,
+                        "tool_args": dict(fc.args) if fc.args else {},
+                    })
+                    await asyncio.sleep(0)
+                elif hasattr(part, "function_response") and part.function_response:
+                    fr = part.function_response
+                    resp_data = fr.response
+                    if hasattr(resp_data, "model_dump"):
+                        resp_data = resp_data.model_dump()
+                    elif not isinstance(resp_data, (dict, list, str, int, float, bool, type(None))):
+                        resp_data = str(resp_data)
+                    await event_bus.emit("task_event", {
+                        "task_id": task_id,
+                        "event_type": "tool_result",
+                        "agent": author,
+                        "author": author,
+                        "tool_name": fr.name,
+                        "tool_response": resp_data,
+                    })
+                    await asyncio.sleep(0)
 
         logger.info("task_execution_completed", task_id=task_id)
         await event_bus.emit("task_completed", {

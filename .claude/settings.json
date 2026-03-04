@@ -32,7 +32,23 @@
       "Bash(python -c \"import dotenv; print\\(''OK:'', dotenv.__file__\\)\")",
       "Bash(python3 -c \"import google.adk; print\\(google.adk.__file__\\)\")",
       "Read(//c/@wecan/@zanni-ai/ccc-ai/.venv/Lib/site-packages/**)",
-      "Read(//c/@wecan/@zanni-ai/ccc-ai/.venv/Lib/site-packages//**)"
+      "Read(//c/@wecan/@zanni-ai/ccc-ai/.venv/Lib/site-packages//**)",
+      "Read(//c/@wecan/@zanni-ai/ccc-ai/.venv/**)",
+      "Bash(python3 -m pip show google-adk google-genai)",
+      "Bash(xargs grep -l \"class Runner\")",
+      "Bash(python3 -c \"from google.adk.agents import Agent; print\\(Agent.__module__\\); import inspect; print\\(inspect.signature\\(Agent.__init__\\)\\)\")",
+      "Bash(/c/@wecan/@zanni-ai/ccc-ai/.venv/Scripts/python -c \"from google.adk.agents import Agent; import inspect; sig = inspect.signature\\(Agent.__init__\\); print\\(''Agent.__init__ signature:''\\); print\\(sig\\)\")",
+      "Bash(/c/@wecan/@zanni-ai/ccc-ai/.venv/Scripts/python -c \"import sys; print\\(''Python path:''\\); [print\\(p\\) for p in sys.path]; print\\(''\\\\nLooking for google.adk...''\\)\")",
+      "Read(//c/@wecan/@zanni-ai/ccc-ai/**)",
+      "Bash(/c/@wecan/@zanni-ai/ccc-ai/.venv/Scripts/pip show google-adk)",
+      "Bash(python -c \"from google.adk.agents import Agent; import inspect; sig = inspect.signature\\(Agent.__init__\\); print\\([p for p in sig.parameters]\\)\")",
+      "Read(//c/@projects/gen-ai-is-builder-2/frontend/**)",
+      "Read(//c/@projects/gen-ai-is-builder-2/frontend/src/**)",
+      "Read(//c/@projects/gen-ai-is-builder-2/modules/coder_agent//**)",
+      "Read(//c/@projects/gen-ai-is-builder-2/flows/**)",
+      "Read(//c/Users/**)",
+      "Bash(python -c \"import google.adk; import os; print\\(os.path.dirname\\(google.adk.__file__\\)\\)\")",
+      "Read(//c/Python312/Lib/site-packages/google/adk/**)"
     ]
   }
 }

@@ -4,10 +4,15 @@ import sys
 from pathlib import Path
 
 from google.adk.agents import Agent
+from google.genai import types as genai_types
 from mcp.client.stdio import StdioServerParameters
 from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams
 
 from src.orchestrator.agent_registry import AgentRegistry
+
+_THINKING_CONFIG = genai_types.GenerateContentConfig(
+    thinking_config=genai_types.ThinkingConfig(include_thoughts=True),
+)
 
 
 class RootAgentFactory:
@@ -57,6 +62,7 @@ class RootAgentFactory:
             description=agent_info.description,
             instruction=instruction,
             tools=[mcp_tools],
+            generate_content_config=_THINKING_CONFIG,
         )
 
     def create_root_agent(self) -> Agent:
@@ -77,4 +83,5 @@ class RootAgentFactory:
                 "Synthesize and present results back to the user."
             ),
             sub_agents=sub_agents,
+            generate_content_config=_THINKING_CONFIG,
         )

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 from google.adk.agents import Agent
+from google.genai import types as genai_types
 from mcp.client.stdio import StdioServerParameters
 from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams, SseConnectionParams
 
@@ -53,16 +54,28 @@ def _build_mcp_toolset() -> McpToolset:
 
 code_generator_mcp = _build_mcp_toolset()
 
-# ADK Agent definition — model from module.yaml (agent.model)
-_agent_model = _manifest.get("agent", {}).get("model", "gemini-2.5-flash")
+# Default model from module.yaml
+DEFAULT_MODEL = _manifest.get("agent", {}).get("model", "gemini-2.5-flash")
 
-root_agent = Agent(
-    model=_agent_model,
-    name="coder_agent",
-    description=(
-        "Code generation and modification. Can generate, review, and modify code "
-        "based on specifications or error diagnostics."
-    ),
-    instruction=load_system_prompt(),
-    tools=[code_generator_mcp],
-)
+
+def create_agent(model: str | None = None) -> Agent:
+    """Create a coder_agent Agent instance with the given model."""
+    return Agent(
+        model=model or DEFAULT_MODEL,
+        name="coder_agent",
+        description=(
+            "Code generation and modification. Can generate, review, and modify code "
+            "based on specifications or error diagnostics."
+        ),
+        instruction=load_system_prompt(),
+        tools=[code_generator_mcp],
+        generate_content_config=genai_types.GenerateContentConfig(
+            thinking_config=genai_types.ThinkingConfig(
+                include_thoughts=True,
+            ),
+        ),
+    )
+
+
+# Default singleton for backward compatibility
+root_agent = create_agent()

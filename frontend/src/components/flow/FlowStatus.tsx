@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFlowStore, type FlowEvent, type InteractionQuestion } from '../../stores/flowStore';
 
 /** Human-readable summary for each flow event type. */
@@ -20,7 +20,7 @@ function eventSummary(evt: FlowEvent): string {
       return `Agent "${d.agent}" completed${d.output_summary ? `\n${d.output_summary}` : ''}${fileLine}`;
     }
     case 'flow_agent_thinking':
-      return `${d.agent} thinking: ${d.text}`;
+      return `${d.agent} ${d.is_thought ? 'thought' : 'thinking'}: ${d.text}`;
     case 'flow_agent_tool_use':
       return `${d.agent} calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`;
     case 'flow_agent_tool_result': {
@@ -29,6 +29,10 @@ function eventSummary(evt: FlowEvent): string {
         : JSON.stringify(d.tool_response || '', null, 2);
       const truncated = resp.length > 300 ? resp.slice(0, 300) + '...' : resp;
       return `${d.agent} tool result [${d.tool_name}]: ${truncated}`;
+    }
+    case 'flow_agent_streaming_text': {
+      const text = String(d.text || '');
+      return `${d.agent || ''}: ${text.length > 500 ? text.slice(0, 500) + '...' : text}`;
     }
     case 'flow_llm_decision':
       return `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''} [${d.provider}/${d.model}]`;
@@ -140,8 +144,22 @@ function MultiQuestionForm({
 }
 
 function FlowEventList({ events }: { events: FlowEvent[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Also scroll when streaming text appends (length stays same, content grows)
+  const lastEvent = events[events.length - 1];
+  const scrollTrigger = lastEvent?.event_type === 'flow_agent_streaming_text'
+    ? (lastEvent.data.text as string)?.length ?? 0
+    : 0;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [events.length, scrollTrigger]);
+
   return (
     <div
+      ref={containerRef}
       style={{
         maxHeight: 300,
         overflowY: 'auto',
@@ -154,6 +172,7 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
       {events.map((evt, i) => {
         const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
         const summary = eventSummary(evt);
+        const agent = (evt.data.agent as string) || (evt.data.author as string) || '';
 
         // Color coding for streaming events
         let eventColor = '#60a5fa'; // default blue
@@ -164,6 +183,8 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
           eventColor = '#fbbf24'; borderColor = '#451a03';
         } else if (evt.event_type === 'flow_agent_tool_result') {
           eventColor = '#34d399'; borderColor = '#064e3b';
+        } else if (evt.event_type === 'flow_agent_streaming_text') {
+          eventColor = '#22d3ee'; borderColor = '#164e63';
         }
 
         return (
@@ -181,6 +202,7 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: summary ? '0.25rem' : 0 }}>
               <span style={{ color: '#475569' }}>{time}</span>
               <span style={{ color: eventColor }}>{evt.event_type}</span>
+              {agent && <span style={{ color: '#a78bfa' }}>{agent}</span>}
             </div>
             {summary && (
               <div style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -250,6 +272,11 @@ export function FlowStatus() {
               <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
                 Current state: <span style={{ color: '#38bdf8' }}>{flow.currentState || '...'}</span>
               </div>
+              {flow.provider && flow.model && (
+                <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  Model: <span style={{ color: '#a78bfa' }}>{flow.provider}/{flow.model}</span>
+                </div>
+              )}
 
               {/* Event timeline */}
               {events.length > 0 && (

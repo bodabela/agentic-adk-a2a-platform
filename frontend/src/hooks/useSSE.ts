@@ -11,6 +11,7 @@ const FLOW_EVENTS = [
   'flow_agent_thinking',
   'flow_agent_tool_use',
   'flow_agent_tool_result',
+  'flow_agent_streaming_text',
   'flow_llm_decision',
   'flow_input_required',
   'flow_user_response',
@@ -21,9 +22,11 @@ const FLOW_EVENTS = [
 export function useSSE() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const addTaskEvent = useTaskStore((s) => s.addEvent);
+  const appendTaskStreamingText = useTaskStore((s) => s.appendStreamingText);
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
   const updateFlowState = useFlowStore((s) => s.updateFlowState);
   const addFlowEvent = useFlowStore((s) => s.addFlowEvent);
+  const appendFlowStreamingText = useFlowStore((s) => s.appendFlowStreamingText);
   const addInteraction = useFlowStore((s) => s.addInteraction);
   const addCostEvent = useCostStore((s) => s.addCostEvent);
 
@@ -36,11 +39,20 @@ export function useSSE() {
 
     es.addEventListener('task_event', (e) => {
       const data = JSON.parse(e.data);
-      addTaskEvent(data.task_id, {
-        event_type: data.event_type,
-        timestamp: new Date().toISOString(),
-        data,
-      });
+      if (data.event_type === 'streaming_text') {
+        appendTaskStreamingText(
+          data.task_id,
+          data.text || '',
+          data.agent || data.author || '',
+          !!data.is_thought,
+        );
+      } else {
+        addTaskEvent(data.task_id, {
+          event_type: data.event_type,
+          timestamp: new Date().toISOString(),
+          data,
+        });
+      }
     });
 
     es.addEventListener('task_completed', (e) => {
@@ -60,6 +72,17 @@ export function useSSE() {
         const flowId = data.flow_id;
         if (!flowId) return;
 
+        // Streaming text uses append (typewriter effect)
+        if (eventName === 'flow_agent_streaming_text') {
+          appendFlowStreamingText(
+            flowId,
+            data.text || '',
+            data.agent || data.author || '',
+            !!data.is_thought,
+          );
+          return;
+        }
+
         // Always add to event timeline
         addFlowEvent(flowId, {
           event_type: eventName,
@@ -75,6 +98,8 @@ export function useSSE() {
               flowName: data.flow_name,
               currentState: '',
               status: 'running',
+              provider: data.provider as string,
+              model: data.model as string,
               states: {},
               events: [],
             });
@@ -119,7 +144,7 @@ export function useSSE() {
     };
 
     eventSourceRef.current = es;
-  }, [addTaskEvent, updateTaskStatus, updateFlowState, addFlowEvent, addInteraction, addCostEvent]);
+  }, [addTaskEvent, appendTaskStreamingText, updateTaskStatus, updateFlowState, addFlowEvent, appendFlowStreamingText, addInteraction, addCostEvent]);
 
   useEffect(() => {
     connect();
