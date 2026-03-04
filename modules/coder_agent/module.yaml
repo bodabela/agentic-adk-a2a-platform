@@ -1,0 +1,41 @@
+module:
+  name: "coder_agent"
+  version: "0.1.0"
+  description: "Code generation and modification agent"
+  category: "development"
+
+agent:
+  enabled: true
+  model: "gemini-2.5-flash"
+  model_fallback: "gemini-2.5-pro"
+  max_tokens: 8192
+  mode: "on_demand"
+  capabilities:
+    - "code_generation"
+    - "code_modification"
+    - "hotfix_creation"
+  supported_modalities:
+    input: ["text", "application/json"]
+    output: ["text", "application/json"]
+  human_interaction:
+    enabled: true
+    interaction_types:
+      - "confirmation"
+      - "selection"
+      - "free_text"
+
+tools:
+  mcp:
+    transport: "stdio"
+    server: "tools/mcp_server.py"
+    tools:
+      - name: "generate_code_files"
+        description: "Generate code file contents based on a specification"
+      - name: "read_code_file"
+        description: "Read a code file's contents from the workspace"
+      - name: "write_code_file"
+        description: "Write content to a code file in the workspace"
+
+cost_tracking:
+  enabled: true
+  budget_alert_threshold_usd: 10.0

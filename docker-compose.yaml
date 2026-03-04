@@ -1,0 +1,46 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - APP_MODULES_DIR=/modules
+      - APP_FLOWS_DIR=/flows
+    volumes:
+      - ./modules:/modules:ro
+      - ./flows:/flows:ro
+      - ./config:/config:ro
+    depends_on:
+      - coder-agent
+    networks:
+      - agent-net
+
+  coder-agent:
+    build:
+      context: ./modules/coder_agent
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    networks:
+      - agent-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - agent-net
+
+networks:
+  agent-net:
+    driver: bridge

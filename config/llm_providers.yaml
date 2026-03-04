@@ -1,0 +1,62 @@
+defaults:
+  provider: google
+  model: gemini-2.5-flash
+  fallback_model: gemini-2.5-pro
+
+providers:
+  google:
+    display_name: "Google Gemini"
+    api_key_env: "GOOGLE_API_KEY"
+    models:
+      gemini-2.5-flash:
+        display_name: "Gemini 2.5 Flash"
+        pricing:
+          input_per_token: 0.00000015
+          output_per_token: 0.0000006
+        max_tokens: 65536
+      gemini-2.5-pro:
+        display_name: "Gemini 2.5 Pro"
+        pricing:
+          input_per_token: 0.00000125
+          output_per_token: 0.000005
+        max_tokens: 65536
+      gemini-3.1-pro-preview:
+        display_name: "Gemini 3.1 Pro (Preview)"
+        pricing:
+          input_per_token: 0.00000125
+          output_per_token: 0.000005
+        max_tokens: 65536
+
+  anthropic:
+    display_name: "Anthropic Claude"
+    api_key_env: "ANTHROPIC_API_KEY"
+    models:
+      claude-sonnet-4-20250514:
+        display_name: "Claude Sonnet 4"
+        pricing:
+          input_per_token: 0.000003
+          output_per_token: 0.000015
+        max_tokens: 8192
+      claude-haiku-3-20250414:
+        display_name: "Claude Haiku 3"
+        pricing:
+          input_per_token: 0.0000008
+          output_per_token: 0.000004
+        max_tokens: 8192
+
+  openai:
+    display_name: "OpenAI"
+    api_key_env: "OPENAI_API_KEY"
+    models:
+      gpt-4o:
+        display_name: "GPT-4o"
+        pricing:
+          input_per_token: 0.0000025
+          output_per_token: 0.00001
+        max_tokens: 4096
+      gpt-4o-mini:
+        display_name: "GPT-4o Mini"
+        pricing:
+          input_per_token: 0.00000015
+          output_per_token: 0.0000006
+        max_tokens: 4096

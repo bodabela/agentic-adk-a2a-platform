@@ -1,0 +1,31 @@
+{
+  "name": "coder_agent",
+  "description": "Code generation, modification, and hotfix creation",
+  "version": "0.1.0",
+  "url": "http://localhost:8001",
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "stateTransitionHistory": true
+  },
+  "skills": [
+    {
+      "id": "generate_code",
+      "name": "Code Generation",
+      "description": "Generate source code from a system design or specification"
+    },
+    {
+      "id": "modify_code",
+      "name": "Code Modification",
+      "description": "Modify existing code based on requirements or bug reports"
+    },
+    {
+      "id": "create_hotfix",
+      "name": "Hotfix Creation",
+      "description": "Create targeted fixes based on diagnostic results"
+    }
+  ],
+  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultOutputModes": ["text/plain", "application/json"],
+  "supportsAuthenticatedExtendedCard": false
+}

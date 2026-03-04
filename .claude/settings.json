@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --version)",
+      "Bash(npm --version)",
+      "Bash(uv --version)",
+      "Bash(pnpm --version)",
+      "Bash(git --version)",
+      "Bash(pip --version)",
+      "Bash(pip install --dry-run google-adk)",
+      "WebFetch(domain:google.github.io)",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(data[0][''text'']\\)\")",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); text=data[0][''text'']; lines=text.split\\(''\\\\n''\\); print\\(''\\\\n''.join\\(lines[1200:]\\)\\)\")",
+      "Bash(pip install -e \".[dev]\")",
+      "Bash(timeout 5 python -m uvicorn backend.src.main:app --host 127.0.0.1 --port 8000)",
+      "Bash(python -c \"from src.config import Settings; s = Settings\\(\\); print\\(''Config OK:'', s.app_name\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(pnpm install)",
+      "Bash(pnpm add react-router-dom zustand react-grid-layout)",
+      "Bash(pnpm add -D @types/react-grid-layout)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(pnpm build)",
+      "Bash(python -m pytest -v)",
+      "Bash(python -c \"import google.genai; print\\(dir\\(google.genai\\)\\)\")",
+      "Bash(timeout 8 python -m uvicorn src.main:app --host 127.0.0.1 --port 8000)",
+      "Bash(timeout 5 python -m uvicorn src.main:app --host 127.0.0.1 --port 8001 --no-access-log)",
+      "WebFetch(domain:ai.google.dev)"
+    ]
+  }
+}

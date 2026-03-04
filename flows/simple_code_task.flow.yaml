@@ -1,0 +1,63 @@
+flow:
+  name: "simple_code_task"
+  version: "1.0.0"
+  description: "Simple flow: user submits a coding task, coder_agent handles it"
+
+  trigger:
+    type: "manual"
+    input_schema:
+      type: "object"
+      required: ["task_description"]
+      properties:
+        task_description:
+          type: "string"
+
+  config:
+    max_retry_loops: 3
+    timeout_minutes: 30
+    provider: "google"
+    model: "gemini-3.1-pro-preview"
+
+  states:
+    generate_code:
+      type: "agent_task"
+      agent: "coder_agent"
+      description: "Generate code from the task description"
+      input:
+        requirement: "{{ trigger.task_description }}"
+      output: [source_files, summary]
+      on_complete: "review_result"
+      on_error: "handle_error"
+
+    review_result:
+      type: "llm_decision"
+      context:
+        - "{{ states.generate_code.output }}"
+      decision_prompt: |
+        Review the generated code:
+        - If it looks complete and correct -> accept
+        - If it needs improvement -> revise
+        - If there are questions -> ask_user
+      transitions:
+        accept: "complete_success"
+        revise: "generate_code"
+        ask_user: "ask_user_input"
+
+    ask_user_input:
+      type: "human_interaction"
+      interaction_type: "free_text"
+      prompt: "The agent has a question about the task. Please provide more details."
+      on_response: "generate_code"
+
+    handle_error:
+      type: "terminal"
+      status: "failed"
+      output:
+        error: "{{ error }}"
+
+    complete_success:
+      type: "terminal"
+      status: "success"
+      output:
+        result: "{{ states.generate_code.output }}"
+        cost: "{{ flow.cost_report }}"
