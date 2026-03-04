@@ -265,6 +265,23 @@ class FlowEngine:
         # Invoke the agent via A2A JSON-RPC
         output = await self._call_agent_a2a(node.agent, resolved_input, flow_id)
 
+        # Record cost from agent usage data (estimated tokens from A2A response)
+        usage = output.pop("_usage", None)
+        if usage:
+            try:
+                await self.cost_tracker.record_llm_call(
+                    task_id=flow_id,
+                    module=node.agent,
+                    agent=node.agent,
+                    model=usage.get("model", "unknown"),
+                    input_tokens=usage.get("input_tokens_est", 0),
+                    output_tokens=usage.get("output_tokens_est", 0),
+                    latency_ms=usage.get("latency_ms", 0),
+                    provider=usage.get("provider", "google"),
+                )
+            except Exception as cost_err:
+                logger.warning("[Cost] Failed to record agent cost: %s", cost_err)
+
         # Scan workspace for generated files and include contents
         workspace_files = self._scan_workspace(node.agent)
         if workspace_files:
@@ -333,6 +350,12 @@ class FlowEngine:
         agent_questions = FlowEngine._extract_agent_questions(result_text)
         if agent_questions:
             output["agent_questions"] = agent_questions
+
+        # Extract usage data for cost tracking
+        usage = result.get("usage")
+        if usage:
+            output["_usage"] = usage
+
         return output
 
     async def _call_agent_a2a(
@@ -421,6 +444,8 @@ class FlowEngine:
 
                 event_type = ""
                 data_lines: list[str] = []
+                _pending_tool_call = ""
+                _tool_call_time = 0.0
 
                 async for raw_line in resp.aiter_lines():
                     line = raw_line.rstrip("\r\n") if isinstance(raw_line, str) else raw_line.decode().rstrip("\r\n")
@@ -457,23 +482,41 @@ class FlowEngine:
                                 })
                                 await asyncio.sleep(0)
                             elif event_type == "tool_call":
+                                _pending_tool_call = data.get("tool_name", "")
+                                _tool_call_time = asyncio.get_event_loop().time()
                                 await self.event_bus.emit("flow_agent_tool_use", {
                                     "flow_id": flow_id,
                                     "agent": agent_name,
-                                    "tool_name": data.get("tool_name", ""),
+                                    "tool_name": _pending_tool_call,
                                     "tool_args": data.get("tool_args", {}),
                                     "author": data.get("author", ""),
                                 })
                                 await asyncio.sleep(0)  # flush to frontend
                             elif event_type == "tool_result":
+                                tool_name = data.get("tool_name", "") or _pending_tool_call
+                                tool_latency = int((asyncio.get_event_loop().time() - _tool_call_time) * 1000) if _tool_call_time else 0
+                                _pending_tool_call = ""
+                                _tool_call_time = 0.0
                                 await self.event_bus.emit("flow_agent_tool_result", {
                                     "flow_id": flow_id,
                                     "agent": agent_name,
-                                    "tool_name": data.get("tool_name", ""),
+                                    "tool_name": tool_name,
                                     "tool_response": data.get("tool_response", ""),
                                     "author": data.get("author", ""),
                                 })
                                 await asyncio.sleep(0)  # flush to frontend
+                                # Record tool invocation cost event
+                                try:
+                                    await self.cost_tracker.record_tool_invocation(
+                                        task_id=flow_id,
+                                        module=agent_name,
+                                        agent=data.get("author", "") or agent_name,
+                                        tool_id=tool_name,
+                                        tool_source="mcp",
+                                        latency_ms=tool_latency,
+                                    )
+                                except Exception:
+                                    pass
                             elif event_type == "final":
                                 output = self._parse_a2a_result(data, task_id)
                                 logger.info("[A2A-SSE] %s final: %s", agent_name, str(output)[:500])

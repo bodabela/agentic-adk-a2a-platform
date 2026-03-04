@@ -13,7 +13,7 @@ export function TopBar() {
         padding: '0 1.5rem',
       }}
     >
-      <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+      <div style={{ color: '#94a3b8', fontSize: '1.2rem' }}>
         Modular Multi-Agent Platform
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>

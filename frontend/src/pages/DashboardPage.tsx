@@ -44,7 +44,7 @@ export function DashboardPage() {
               padding: '1.25rem',
             }}
           >
-            <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '0.5rem' }}>
+            <div style={{ color: '#94a3b8', fontSize: '1.125rem', marginBottom: '0.5rem' }}>
               {card.label}
             </div>
             <div style={{ color: card.color, fontSize: '1.5rem', fontWeight: 700 }}>

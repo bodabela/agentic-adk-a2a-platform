@@ -75,7 +75,7 @@ function MultiQuestionForm({
     >
       {questions.map((q, idx) => (
         <div key={q.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <label style={{ color: '#cbd5e1', fontSize: '0.8rem', fontWeight: 500 }}>
+          <label style={{ color: '#cbd5e1', fontSize: '1.2rem', fontWeight: 500 }}>
             {idx + 1}. {q.text}
             {q.required !== false && <span style={{ color: '#f87171' }}> *</span>}
           </label>
@@ -94,7 +94,7 @@ function MultiQuestionForm({
                     border: answers[q.id] === opt.id ? '2px solid #60a5fa' : '1px solid #475569',
                     borderRadius: 6,
                     cursor: 'pointer',
-                    fontSize: '0.8rem',
+                    fontSize: '1.2rem',
                   }}
                 >
                   {opt.label}
@@ -113,7 +113,7 @@ function MultiQuestionForm({
                 border: '1px solid #475569',
                 borderRadius: 6,
                 color: '#e2e8f0',
-                fontSize: '0.85rem',
+                fontSize: '1.275rem',
                 outline: 'none',
               }}
             />
@@ -131,7 +131,7 @@ function MultiQuestionForm({
           border: 'none',
           borderRadius: 6,
           cursor: allAnswered ? 'pointer' : 'not-allowed',
-          fontSize: '0.8rem',
+          fontSize: '1.2rem',
           fontWeight: 600,
           alignSelf: 'flex-start',
           marginTop: '0.25rem',
@@ -191,7 +191,7 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
           <div
             key={i}
             style={{
-              fontSize: '0.7rem',
+              fontSize: '1.05rem',
               padding: '0.375rem 0.5rem',
               background: '#020617',
               border: `1px solid ${borderColor}`,
@@ -259,7 +259,7 @@ export function FlowStatus() {
                 <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{flow.flowName}</span>
                 <span
                   style={{
-                    fontSize: '0.75rem',
+                    fontSize: '1.125rem',
                     padding: '0.125rem 0.5rem',
                     borderRadius: 4,
                     background: flow.status === 'completed' ? '#14532d' : '#1e3a5f',
@@ -269,11 +269,11 @@ export function FlowStatus() {
                   {flow.status}
                 </span>
               </div>
-              <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+              <div style={{ color: '#94a3b8', fontSize: '1.2rem' }}>
                 Current state: <span style={{ color: '#38bdf8' }}>{flow.currentState || '...'}</span>
               </div>
               {flow.provider && flow.model && (
-                <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                <div style={{ color: '#64748b', fontSize: '1.125rem', marginTop: '0.25rem' }}>
                   Model: <span style={{ color: '#a78bfa' }}>{flow.provider}/{flow.model}</span>
                 </div>
               )}
@@ -287,7 +287,7 @@ export function FlowStatus() {
                       background: 'none',
                       border: 'none',
                       color: '#94a3b8',
-                      fontSize: '0.75rem',
+                      fontSize: '1.125rem',
                       cursor: 'pointer',
                       padding: 0,
                       display: 'flex',
@@ -320,13 +320,13 @@ export function FlowStatus() {
                     borderRadius: 6,
                   }}
                 >
-                  <div style={{ color: '#4ade80', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                  <div style={{ color: '#4ade80', fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.5rem' }}>
                     Result
                   </div>
                   <pre
                     style={{
                       color: '#cbd5e1',
-                      fontSize: '0.75rem',
+                      fontSize: '1.125rem',
                       margin: 0,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
@@ -416,7 +416,7 @@ export function FlowStatus() {
                         border: 'none',
                         borderRadius: 6,
                         cursor: 'pointer',
-                        fontSize: '0.8rem',
+                        fontSize: '1.2rem',
                       }}
                     >
                       {opt.label}
@@ -464,7 +464,7 @@ export function FlowStatus() {
                       border: '1px solid #475569',
                       borderRadius: 6,
                       color: '#e2e8f0',
-                      fontSize: '0.85rem',
+                      fontSize: '1.275rem',
                       outline: 'none',
                     }}
                   />
@@ -477,7 +477,7 @@ export function FlowStatus() {
                       border: 'none',
                       borderRadius: 6,
                       cursor: 'pointer',
-                      fontSize: '0.8rem',
+                      fontSize: '1.2rem',
                       fontWeight: 600,
                     }}
                   >

@@ -26,7 +26,7 @@ const selectStyle: React.CSSProperties = {
   border: '1px solid #334155',
   borderRadius: 6,
   color: '#e2e8f0',
-  fontSize: '0.875rem',
+  fontSize: '1.3rem',
   outline: 'none',
   flex: 1,
 };
@@ -150,7 +150,7 @@ export function FlowsPage() {
               border: '1px solid #334155',
               borderRadius: 6,
               color: '#e2e8f0',
-              fontSize: '0.875rem',
+              fontSize: '1.3rem',
               outline: 'none',
               resize: 'vertical',
               fontFamily: 'monospace',
@@ -196,7 +196,7 @@ export function FlowsPage() {
               borderRadius: 6,
               cursor: loading ? 'wait' : 'pointer',
               opacity: loading || !flowFile.trim() ? 0.5 : 1,
-              fontSize: '0.875rem',
+              fontSize: '1.3rem',
               alignSelf: 'flex-start',
             }}
           >

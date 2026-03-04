@@ -19,7 +19,7 @@ export function TaskPanel() {
           <TaskTimeline />
         </div>
       </div>
-      <div style={{ width: 260, flexShrink: 0 }}>
+      <div style={{ width: 300, flexShrink: 0 }}>
         <AgentPanel />
       </div>
     </div>

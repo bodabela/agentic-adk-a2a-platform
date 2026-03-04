@@ -32,7 +32,7 @@ export function TaskInput() {
           border: '1px solid #334155',
           borderRadius: 6,
           color: '#e2e8f0',
-          fontSize: '0.875rem',
+          fontSize: '1.3rem',
           outline: 'none',
         }}
       />
@@ -47,7 +47,7 @@ export function TaskInput() {
           borderRadius: 6,
           cursor: loading ? 'wait' : 'pointer',
           opacity: loading || !input.trim() ? 0.5 : 1,
-          fontSize: '0.875rem',
+          fontSize: '1.3rem',
         }}
       >
         {loading ? 'Sending...' : 'Submit'}

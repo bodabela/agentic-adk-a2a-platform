@@ -11,7 +11,7 @@ export function Sidebar() {
   return (
     <nav
       style={{
-        width: 220,
+        width: 250,
         background: '#0f172a',
         borderRight: '1px solid #334155',
         padding: '1rem 0',
@@ -26,10 +26,10 @@ export function Sidebar() {
           marginBottom: '1rem',
         }}
       >
-        <h1 style={{ color: '#e2e8f0', fontSize: '1.1rem', margin: 0, fontWeight: 700 }}>
+        <h1 style={{ color: '#e2e8f0', fontSize: '1.4rem', margin: 0, fontWeight: 700 }}>
           Agent Platform
         </h1>
-        <span style={{ color: '#64748b', fontSize: '0.75rem' }}>v0.1.0</span>
+        <span style={{ color: '#64748b', fontSize: '1rem' }}>v0.1.0</span>
       </div>
 
       {navItems.map((item) => (
@@ -40,15 +40,15 @@ export function Sidebar() {
             display: 'flex',
             alignItems: 'center',
             gap: '0.75rem',
-            padding: '0.625rem 1rem',
+            padding: '0.75rem 1.25rem',
             color: isActive ? '#38bdf8' : '#94a3b8',
             background: isActive ? '#1e293b' : 'transparent',
             textDecoration: 'none',
-            fontSize: '0.875rem',
+            fontSize: '1.15rem',
             borderLeft: isActive ? '3px solid #38bdf8' : '3px solid transparent',
           })}
         >
-          <span style={{ fontFamily: 'monospace', width: 16, textAlign: 'center' }}>
+          <span style={{ fontFamily: 'monospace', width: 20, textAlign: 'center', fontSize: '1.2rem' }}>
             {item.icon}
           </span>
           {item.label}

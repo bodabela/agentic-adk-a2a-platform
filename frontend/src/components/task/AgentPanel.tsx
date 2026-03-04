@@ -26,7 +26,7 @@ export function AgentPanel() {
 
   if (loading) {
     return (
-      <div style={{ color: '#64748b', fontSize: '0.8rem', padding: '1rem' }}>
+      <div style={{ color: '#64748b', fontSize: '1.2rem', padding: '1rem' }}>
         Loading agents...
       </div>
     );
@@ -34,7 +34,7 @@ export function AgentPanel() {
 
   if (agents.length === 0) {
     return (
-      <div style={{ color: '#64748b', fontSize: '0.8rem', padding: '1rem' }}>
+      <div style={{ color: '#64748b', fontSize: '1.2rem', padding: '1rem' }}>
         No agent modules discovered.
       </div>
     );
@@ -42,7 +42,7 @@ export function AgentPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <h3 style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+      <h3 style={{ color: '#94a3b8', fontSize: '1.125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
         Available Agents
       </h3>
       {agents.map((agent) => (
@@ -56,15 +56,15 @@ export function AgentPanel() {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
-            <span style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600 }}>
+            <span style={{ color: '#e2e8f0', fontSize: '1.2rem', fontWeight: 600 }}>
               {agent.name}
             </span>
-            <span style={{ color: '#475569', fontSize: '0.65rem', fontFamily: 'monospace' }}>
+            <span style={{ color: '#475569', fontSize: '0.975rem', fontFamily: 'monospace' }}>
               v{agent.version}
             </span>
           </div>
 
-          <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '0.5rem' }}>
+          <div style={{ color: '#94a3b8', fontSize: '1.125rem', marginBottom: '0.5rem' }}>
             {agent.description}
           </div>
 
@@ -74,7 +74,7 @@ export function AgentPanel() {
                 <span
                   key={cap}
                   style={{
-                    fontSize: '0.65rem',
+                    fontSize: '0.975rem',
                     padding: '0.125rem 0.375rem',
                     borderRadius: 4,
                     background: '#1e3a5f',
@@ -93,7 +93,7 @@ export function AgentPanel() {
                 <span
                   key={tool}
                   style={{
-                    fontSize: '0.65rem',
+                    fontSize: '0.975rem',
                     padding: '0.125rem 0.375rem',
                     borderRadius: 4,
                     background: '#14532d',
@@ -107,7 +107,7 @@ export function AgentPanel() {
           )}
 
           {agent.model && (
-            <div style={{ color: '#475569', fontSize: '0.65rem', marginTop: '0.375rem' }}>
+            <div style={{ color: '#475569', fontSize: '0.975rem', marginTop: '0.375rem' }}>
               model: {agent.model}
             </div>
           )}

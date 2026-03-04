@@ -126,13 +126,34 @@ export function useSSE() {
 
     es.addEventListener('cost_event', (e) => {
       const data = JSON.parse(e.data);
+      const costUsd = (data.llm?.total_cost_usd || 0) + (data.tool?.invocation_cost_usd || 0);
       addCostEvent({
+        event_id: data.event_id || '',
         task_id: data.task_id,
+        timestamp: data.timestamp,
         module: data.module,
         agent: data.agent,
         operation_type: data.operation_type,
-        cost_usd: data.llm?.total_cost_usd || 0,
-        timestamp: data.timestamp,
+        llm: data.llm ? {
+          provider: data.llm.provider,
+          model: data.llm.model,
+          input_tokens: data.llm.input_tokens || 0,
+          output_tokens: data.llm.output_tokens || 0,
+          cached_tokens: data.llm.cached_tokens || 0,
+          thinking_tokens: data.llm.thinking_tokens || 0,
+          cost_per_input_token: data.llm.cost_per_input_token || 0,
+          cost_per_output_token: data.llm.cost_per_output_token || 0,
+          total_cost_usd: data.llm.total_cost_usd || 0,
+          latency_ms: data.llm.latency_ms || 0,
+        } : null,
+        tool: data.tool ? {
+          tool_id: data.tool.tool_id,
+          tool_source: data.tool.tool_source,
+          invocation_cost_usd: data.tool.invocation_cost_usd || 0,
+          latency_ms: data.tool.latency_ms || 0,
+        } : null,
+        cost_usd: costUsd,
+        cumulative_task_cost_usd: data.cumulative_task_cost_usd || 0,
       });
     });
 

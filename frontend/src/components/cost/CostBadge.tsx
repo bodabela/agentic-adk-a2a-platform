@@ -11,7 +11,7 @@ export function CostBadge() {
         borderRadius: 6,
         padding: '0.25rem 0.75rem',
         color: totalCost > 1 ? '#f59e0b' : '#22c55e',
-        fontSize: '0.8rem',
+        fontSize: '1.2rem',
         fontFamily: 'monospace',
       }}
     >

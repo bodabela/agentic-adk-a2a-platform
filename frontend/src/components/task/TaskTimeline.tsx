@@ -89,7 +89,7 @@ function EventList({ events }: { events: TaskEvent[] }) {
           <div
             key={i}
             style={{
-              fontSize: '0.7rem',
+              fontSize: '1.05rem',
               padding: '0.375rem 0.5rem',
               background: '#020617',
               border: `1px solid ${style.border}`,
@@ -150,12 +150,12 @@ export function TaskTimeline() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <span style={{ color: '#e2e8f0', fontSize: '0.875rem', fontWeight: 600 }}>
+              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>
                 {task.description.slice(0, 80)}{task.description.length > 80 ? '...' : ''}
               </span>
               <span
                 style={{
-                  fontSize: '0.75rem',
+                  fontSize: '1.125rem',
                   padding: '0.125rem 0.5rem',
                   borderRadius: 4,
                   background:
@@ -175,7 +175,7 @@ export function TaskTimeline() {
             {task.error && (
               <div
                 style={{
-                  fontSize: '0.75rem',
+                  fontSize: '1.125rem',
                   color: '#fca5a5',
                   background: '#450a0a',
                   border: '1px solid #7f1d1d',
@@ -199,7 +199,7 @@ export function TaskTimeline() {
                     background: 'none',
                     border: 'none',
                     color: '#94a3b8',
-                    fontSize: '0.75rem',
+                    fontSize: '1.125rem',
                     cursor: 'pointer',
                     padding: 0,
                     display: 'flex',
@@ -221,7 +221,7 @@ export function TaskTimeline() {
               </div>
             )}
 
-            <div style={{ fontSize: '0.7rem', color: '#475569', fontFamily: 'monospace', marginTop: '0.25rem' }}>
+            <div style={{ fontSize: '1.05rem', color: '#475569', fontFamily: 'monospace', marginTop: '0.25rem' }}>
               {task.task_id}
             </div>
           </div>

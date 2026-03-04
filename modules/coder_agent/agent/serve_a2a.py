@@ -97,7 +97,10 @@ async def a2a_endpoint(request: Request):
     task_id = params.get("id", str(uuid.uuid4()))
     model_override = params.get("model")
 
-    logger.info("[A2A] task=%s model=%s prompt=%s", task_id, model_override, user_text[:200])
+    from modules.coder_agent.agent.agent import DEFAULT_MODEL
+    actual_model = model_override or DEFAULT_MODEL
+
+    logger.info("[A2A] task=%s model=%s prompt=%s", task_id, actual_model, user_text[:200])
 
     runner = _get_runner(model_override)
     if runner is None:
@@ -116,7 +119,10 @@ async def a2a_endpoint(request: Request):
 
     # Run the agent via ADK Runner
     try:
+        import time
         from google.genai import types as genai_types
+
+        start_time = time.monotonic()
 
         # Reuse session for the same task_id (conversation continuity)
         existing_session_id = _task_sessions.get(task_id)
@@ -144,19 +150,29 @@ async def a2a_endpoint(request: Request):
         )
 
         agent_response_parts = []
+        total_output_chars = 0
         async for event in runner.run_async(
             user_id="flow_engine",
             session_id=session.id,
             new_message=user_content,
         ):
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if hasattr(part, "text") and part.text:
+                        total_output_chars += len(part.text)
             if event.is_final_response():
                 if event.content and event.content.parts:
                     for part in event.content.parts:
                         if part.text:
                             agent_response_parts.append(part.text)
 
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
         result_text = "\n".join(agent_response_parts) or "[No response from agent]"
         logger.info("[A2A] task=%s response=%s", task_id, result_text[:500])
+
+        # Estimate tokens from character counts (~4 chars per token)
+        input_tokens_est = max(len(user_text) // 4, 1)
+        output_tokens_est = max(total_output_chars // 4, 1)
 
         return JSONResponse({
             "jsonrpc": "2.0",
@@ -167,6 +183,13 @@ async def a2a_endpoint(request: Request):
                 "artifacts": [{
                     "parts": [{"type": "text", "text": result_text}],
                 }],
+                "usage": {
+                    "input_tokens_est": input_tokens_est,
+                    "output_tokens_est": output_tokens_est,
+                    "model": actual_model,
+                    "provider": "google",
+                    "latency_ms": elapsed_ms,
+                },
             },
         })
     except Exception as e:
@@ -219,7 +242,10 @@ async def a2a_stream_endpoint(request: Request):
     task_id = params.get("id", str(uuid.uuid4()))
     model_override = params.get("model")
 
-    logger.info("[A2A-SSE] task=%s model=%s prompt=%s", task_id, model_override, user_text[:200])
+    from modules.coder_agent.agent.agent import DEFAULT_MODEL
+    actual_model = model_override or DEFAULT_MODEL
+
+    logger.info("[A2A-SSE] task=%s model=%s prompt=%s", task_id, actual_model, user_text[:200])
 
     runner = _get_runner(model_override)
     if runner is None:
@@ -239,9 +265,11 @@ async def a2a_stream_endpoint(request: Request):
 
     async def event_stream():
         try:
+            import time
             from google.adk.agents.run_config import RunConfig, StreamingMode
             from google.genai import types as genai_types
 
+            start_time = time.monotonic()
             session = await _get_or_create_session(runner, task_id)
             user_content = genai_types.Content(
                 role="user",
@@ -249,6 +277,7 @@ async def a2a_stream_endpoint(request: Request):
             )
 
             agent_response_parts = []
+            total_output_chars = 0
 
             async for event in runner.run_async(
                 user_id="flow_engine",
@@ -267,6 +296,7 @@ async def a2a_stream_endpoint(request: Request):
                             # Skip partial function_call argument streaming
                             if hasattr(part, "function_call") and part.function_call:
                                 continue
+                            total_output_chars += len(part.text)
                             is_thought = getattr(part, "thought", False)
                             yield {
                                 "event": "streaming_text",
@@ -284,6 +314,7 @@ async def a2a_stream_endpoint(request: Request):
                     if content and hasattr(content, "parts"):
                         for part in content.parts:
                             if hasattr(part, "text") and part.text:
+                                total_output_chars += len(part.text)
                                 agent_response_parts.append(part.text)
                     continue
 
@@ -291,6 +322,7 @@ async def a2a_stream_endpoint(request: Request):
                 if content and hasattr(content, "parts"):
                     for part in content.parts:
                         if hasattr(part, "text") and part.text:
+                            total_output_chars += len(part.text)
                             is_thought = getattr(part, "thought", False)
                             yield {
                                 "event": "thinking",
@@ -332,8 +364,13 @@ async def a2a_stream_endpoint(request: Request):
                             }
                             await asyncio.sleep(0)
 
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
             result_text = "\n".join(agent_response_parts) or "[No response from agent]"
             logger.info("[A2A-SSE] task=%s response=%s", task_id, result_text[:500])
+
+            # Estimate tokens from character counts (~4 chars per token)
+            input_tokens_est = max(len(user_text) // 4, 1)
+            output_tokens_est = max(total_output_chars // 4, 1)
 
             yield {
                 "event": "final",
@@ -343,6 +380,13 @@ async def a2a_stream_endpoint(request: Request):
                         "id": task_id,
                         "status": {"state": "completed"},
                         "artifacts": [{"parts": [{"type": "text", "text": result_text}]}],
+                        "usage": {
+                            "input_tokens_est": input_tokens_est,
+                            "output_tokens_est": output_tokens_est,
+                            "model": actual_model,
+                            "provider": "google",
+                            "latency_ms": elapsed_ms,
+                        },
                     },
                 }),
             }

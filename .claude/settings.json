@@ -48,7 +48,9 @@
       "Read(//c/@projects/gen-ai-is-builder-2/flows/**)",
       "Read(//c/Users/**)",
       "Bash(python -c \"import google.adk; import os; print\\(os.path.dirname\\(google.adk.__file__\\)\\)\")",
-      "Read(//c/Python312/Lib/site-packages/google/adk/**)"
+      "Read(//c/Python312/Lib/site-packages/google/adk/**)",
+      "Bash(xargs grep -l \"CostTracker\")",
+      "Bash(xargs grep -l \"call_llm\\\\|LLM\")"
     ]
   }
 }
