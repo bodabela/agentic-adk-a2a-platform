@@ -38,10 +38,10 @@ export interface FlowDefinitionData {
 
 /* ── Style constants ───────────────────────────────────── */
 
-const NODE_W = 200;
-const NODE_H = 72;
-const DIAMOND_W = 260;
-const DIAMOND_H = 110;
+const NODE_W = 220;
+const NODE_H = 82;
+const DIAMOND_W = 280;
+const DIAMOND_H = 120;
 const H_GAP = 80;
 const V_GAP = 80;
 const PADDING = 60;
@@ -242,12 +242,13 @@ function computeLayout(
 
 /* ── SVG node shape renderers ──────────────────────────── */
 
-function NodeShape({ node, state, pos, config, isActive }: {
+function NodeShape({ node, state, pos, config, isActive, toolUsage }: {
   node: StateNode;
   state: string;
   pos: NodePos;
   config: FlowDefinitionData['config'];
   isActive?: boolean;
+  toolUsage?: Record<string, number>;
 }) {
   const color = node.type === 'terminal' && node.status === 'failed'
     ? '#ef4444'
@@ -322,32 +323,48 @@ function NodeShape({ node, state, pos, config, isActive }: {
   }
 
   const lines: { text: string; fontSize: number; fill: string; fontWeight?: string }[] = [];
-  lines.push({ text: state, fontSize: 12, fill: '#e2e8f0', fontWeight: '600' });
-  lines.push({ text: label, fontSize: 10, fill: color });
-  if (detail) lines.push({ text: detail, fontSize: 10, fill: '#94a3b8' });
-  if (modelLine) lines.push({ text: truncate(modelLine, 30), fontSize: 9, fill: '#64748b' });
+  lines.push({ text: state, fontSize: 15, fill: '#e2e8f0', fontWeight: '600' });
+  lines.push({ text: label, fontSize: 12, fill: color });
+  if (detail) lines.push({ text: detail, fontSize: 12, fill: '#94a3b8' });
+  if (modelLine) lines.push({ text: truncate(modelLine, 30), fontSize: 11, fill: '#64748b' });
 
-  const lineH = 14;
+  const lineH = 17;
   const totalTextH = lines.length * lineH;
   const textStartY = cy - totalTextH / 2 + lineH / 2 + 2;
 
   return (
     <g>
       {isActive && (
-        <rect
-          x={pos.x - 4}
-          y={pos.y - 4}
-          width={pos.w + 8}
-          height={pos.h + 8}
-          rx={10}
-          ry={10}
-          fill="none"
-          stroke="#38bdf8"
-          strokeWidth={2.5}
-          opacity={0.8}
-        >
-          <animate attributeName="opacity" values="0.4;1;0.4" dur="2s" repeatCount="indefinite" />
-        </rect>
+        <>
+          <rect
+            x={pos.x - 8}
+            y={pos.y - 8}
+            width={pos.w + 16}
+            height={pos.h + 16}
+            rx={12}
+            ry={12}
+            fill="none"
+            stroke="#22d3ee"
+            strokeWidth={3}
+            opacity={0.35}
+          >
+            <animate attributeName="opacity" values="0.15;0.4;0.15" dur="2s" repeatCount="indefinite" />
+          </rect>
+          <rect
+            x={pos.x - 4}
+            y={pos.y - 4}
+            width={pos.w + 8}
+            height={pos.h + 8}
+            rx={10}
+            ry={10}
+            fill="none"
+            stroke="#22d3ee"
+            strokeWidth={3.5}
+            opacity={1}
+          >
+            <animate attributeName="opacity" values="0.6;1;0.6" dur="2s" repeatCount="indefinite" />
+          </rect>
+        </>
       )}
       {shape}
       {lines.map((line, i) => (
@@ -364,6 +381,39 @@ function NodeShape({ node, state, pos, config, isActive }: {
           {line.text}
         </text>
       ))}
+      {/* Tool usage badges below the node */}
+      {toolUsage && Object.keys(toolUsage).length > 0 && (
+        <g>
+          {Object.entries(toolUsage).map(([toolName, count], i) => {
+            const badgeY = pos.y + pos.h + 6 + i * 18;
+            const label = `${toolName} x${count}`;
+            return (
+              <g key={toolName}>
+                <rect
+                  x={cx - label.length * 3.5 - 6}
+                  y={badgeY}
+                  width={label.length * 7 + 12}
+                  height={16}
+                  rx={8}
+                  fill="#1e293b"
+                  stroke="#334155"
+                  strokeWidth={1}
+                />
+                <text
+                  x={cx}
+                  y={badgeY + 12}
+                  textAnchor="middle"
+                  fill="#fbbf24"
+                  fontSize={10}
+                  fontFamily="system-ui, -apple-system, sans-serif"
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      )}
     </g>
   );
 }
@@ -459,10 +509,10 @@ function EdgeLine({
       {edge.label && (
         <>
           <rect
-            x={labelAnchor === 'end' ? labelX - edge.label.length * 6 - 4 : labelX - 3}
-            y={labelY - 10}
-            width={edge.label.length * 6.5 + 6}
-            height={14}
+            x={labelAnchor === 'end' ? labelX - edge.label.length * 7.5 - 4 : labelX - 3}
+            y={labelY - 12}
+            width={edge.label.length * 7.5 + 6}
+            height={17}
             rx={3}
             fill="#0f172a"
             opacity={0.9}
@@ -471,7 +521,7 @@ function EdgeLine({
             x={labelX}
             y={labelY}
             fill={strokeColor}
-            fontSize={10}
+            fontSize={12}
             fontWeight="500"
             fontFamily="system-ui, -apple-system, sans-serif"
             textAnchor={labelAnchor}
@@ -486,7 +536,11 @@ function EdgeLine({
 
 /* ── Main component ────────────────────────────────────── */
 
-export function FlowDiagram({ definition, activeState }: { definition: FlowDefinitionData; activeState?: string }) {
+export function FlowDiagram({ definition, activeState, toolUsageByState = {} }: {
+  definition: FlowDefinitionData;
+  activeState?: string;
+  toolUsageByState?: Record<string, Record<string, number>>;
+}) {
   const { edges, positions, width, height } = useMemo(() => {
     const edges = extractEdges(definition.states);
     const { positions, width, height } = computeLayout(definition.states, edges);
@@ -586,6 +640,7 @@ export function FlowDiagram({ definition, activeState }: { definition: FlowDefin
               pos={pos}
               config={definition.config}
               isActive={stateName === activeState}
+              toolUsage={toolUsageByState[stateName]}
             />
           );
         })}

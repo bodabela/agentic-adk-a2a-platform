@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FlowStatus } from '../components/flow/FlowStatus';
+import { FlowStatus, MultiQuestionForm } from '../components/flow/FlowStatus';
 import { FlowDiagram, type FlowDefinitionData } from '../components/flow/FlowDiagram';
 import { useFlowStore } from '../stores/flowStore';
 
@@ -38,6 +38,10 @@ export function FlowsPage() {
   const [triggerInput, setTriggerInput] = useState('');
   const [loading, setLoading] = useState(false);
   const startFlow = useFlowStore((s) => s.startFlow);
+  const pendingInteractions = useFlowStore((s) => s.pendingInteractions);
+  const resolveInteraction = useFlowStore((s) => s.resolveInteraction);
+  const [freeTextValues, setFreeTextValues] = useState<Record<string, string>>({});
+  const [multiAnswers, setMultiAnswers] = useState<Record<string, Record<string, string>>>({});
 
   // LLM provider/model state
   const [providersData, setProvidersData] = useState<Record<string, ProviderInfo>>({});
@@ -131,16 +135,32 @@ export function FlowsPage() {
     }
   };
 
-  // Find the active flow matching the selected flow to track current state
+  // Find the active flow matching the selected flow to track current state + tool usage
   const activeFlows = useFlowStore((s) => s.activeFlows);
-  const activeState = (() => {
+  const matchingFlow = (() => {
     if (!flowDefinition) return undefined;
-    // Find the most recent active flow with matching name
     const matching = Object.values(activeFlows)
       .filter((f) => f.flowName === flowDefinition.name)
       .reverse();
-    const running = matching.find((f) => f.status === 'running') || matching[0];
-    return running?.currentState || undefined;
+    return matching.find((f) => f.status === 'running') || matching[0];
+  })();
+  const activeState = matchingFlow?.currentState || undefined;
+
+  // Compute per-state tool usage counts from events: { [stateName]: { [toolName]: count } }
+  const toolUsageByState: Record<string, Record<string, number>> = (() => {
+    if (!matchingFlow) return {};
+    const result: Record<string, Record<string, number>> = {};
+    let currentSt = '';
+    for (const evt of matchingFlow.events) {
+      if (evt.event_type === 'flow_state_entered') {
+        currentSt = evt.data.state as string;
+      } else if (evt.event_type === 'flow_agent_tool_use' && currentSt) {
+        const tool = evt.data.tool_name as string;
+        if (!result[currentSt]) result[currentSt] = {};
+        result[currentSt][tool] = (result[currentSt][tool] || 0) + 1;
+      }
+    }
+    return result;
   })();
 
   const currentModels = selectedProvider && providersData[selectedProvider]
@@ -235,6 +255,151 @@ export function FlowsPage() {
               {loading ? 'Starting...' : 'Start Flow'}
             </button>
           </form>
+
+          {/* Pending Interactions – below form */}
+          {pendingInteractions.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
+              <h3 style={{ color: '#f59e0b', fontSize: '1rem', margin: 0 }}>Agent Questions</h3>
+              {pendingInteractions.map((interaction) => (
+                <div
+                  key={interaction.interaction_id}
+                  style={{
+                    background: '#1c1917',
+                    border: '1px solid #f59e0b',
+                    borderRadius: 8,
+                    padding: '1rem',
+                  }}
+                >
+                  <div style={{ color: '#e2e8f0', marginBottom: '0.75rem' }}>
+                    {interaction.prompt || 'The agent has a question. Please provide more details.'}
+                  </div>
+
+                  {interaction.interaction_type === 'multi_question' && interaction.questions && interaction.questions.length > 0 ? (
+                    <MultiQuestionForm
+                      interaction={interaction}
+                      answers={multiAnswers[interaction.interaction_id] ?? {}}
+                      onAnswerChange={(questionId, value) =>
+                        setMultiAnswers((prev) => ({
+                          ...prev,
+                          [interaction.interaction_id]: {
+                            ...prev[interaction.interaction_id],
+                            [questionId]: value,
+                          },
+                        }))
+                      }
+                      onSubmit={async () => {
+                        const answers = multiAnswers[interaction.interaction_id] ?? {};
+                        await fetch('/api/flows/interact', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            interaction_id: interaction.interaction_id,
+                            response: answers,
+                          }),
+                        });
+                        resolveInteraction(interaction.interaction_id);
+                        setMultiAnswers((prev) => {
+                          const next = { ...prev };
+                          delete next[interaction.interaction_id];
+                          return next;
+                        });
+                      }}
+                    />
+                  ) : interaction.options && interaction.options.length > 0 ? (
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {interaction.options.map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={async () => {
+                            await fetch('/api/flows/interact', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                interaction_id: interaction.interaction_id,
+                                response: { id: opt.id },
+                              }),
+                            });
+                            resolveInteraction(interaction.interaction_id);
+                          }}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: opt.recommended ? '#2563eb' : '#334155',
+                            color: '#e2e8f0',
+                            border: 'none',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            fontSize: '1.2rem',
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <form
+                      style={{ display: 'flex', gap: '0.5rem' }}
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const text = freeTextValues[interaction.interaction_id] ?? '';
+                        if (!text.trim()) return;
+                        await fetch('/api/flows/interact', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            interaction_id: interaction.interaction_id,
+                            response: text,
+                          }),
+                        });
+                        resolveInteraction(interaction.interaction_id);
+                        setFreeTextValues((prev) => {
+                          const next = { ...prev };
+                          delete next[interaction.interaction_id];
+                          return next;
+                        });
+                      }}
+                    >
+                      <input
+                        type="text"
+                        placeholder="Type your response..."
+                        value={freeTextValues[interaction.interaction_id] ?? ''}
+                        onChange={(e) =>
+                          setFreeTextValues((prev) => ({
+                            ...prev,
+                            [interaction.interaction_id]: e.target.value,
+                          }))
+                        }
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 0.75rem',
+                          background: '#1e293b',
+                          border: '1px solid #475569',
+                          borderRadius: 6,
+                          color: '#e2e8f0',
+                          fontSize: '1.275rem',
+                          outline: 'none',
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        style={{
+                          padding: '0.5rem 1rem',
+                          background: '#f59e0b',
+                          color: '#1c1917',
+                          border: 'none',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: '1.2rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Send
+                      </button>
+                    </form>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right panel – Flow Diagram */}
@@ -244,7 +409,7 @@ export function FlowsPage() {
               Loading flow diagram...
             </div>
           ) : flowDefinition ? (
-            <FlowDiagram definition={flowDefinition} activeState={activeState} />
+            <FlowDiagram definition={flowDefinition} activeState={activeState} toolUsageByState={toolUsageByState} />
           ) : (
             <div style={{
               color: '#475569',
