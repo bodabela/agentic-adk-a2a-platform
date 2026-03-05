@@ -3,8 +3,9 @@
 import asyncio
 import traceback
 import uuid
+from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from src.common.logging import get_logger
@@ -12,6 +13,9 @@ from src.common.logging import get_logger
 logger = get_logger("tasks")
 
 router = APIRouter()
+
+# Module-level registry of pending interactions: interaction_id -> asyncio.Future
+_pending_interactions: dict[str, asyncio.Future] = {}
 
 
 class TaskSubmission(BaseModel):
@@ -23,6 +27,11 @@ class TaskResponse(BaseModel):
     task_id: str
     status: str
     description: str
+
+
+class TaskInteractionResponse(BaseModel):
+    interaction_id: str
+    response: Any
 
 
 @router.post("/", response_model=TaskResponse)
@@ -59,6 +68,19 @@ async def get_task(task_id: str, request: Request):
     }
 
 
+@router.post("/interact")
+async def submit_task_interaction(req: TaskInteractionResponse):
+    """Submit a user response to a pending task interaction."""
+    future = _pending_interactions.get(req.interaction_id)
+    if future and not future.done():
+        future.set_result(req.response)
+        return {"status": "ok", "interaction_id": req.interaction_id}
+    raise HTTPException(
+        status_code=404,
+        detail=f"No pending interaction found: {req.interaction_id}",
+    )
+
+
 async def _execute_task(task_id: str, submission: TaskSubmission, request: Request):
     """Run the root agent to process the task."""
     event_bus = request.app.state.event_bus
@@ -82,6 +104,9 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
             model=default_model,
             modules_dir=settings.modules_dir,
             workspace_dir=settings.workspace_dir,
+            event_bus=event_bus,
+            task_id=task_id,
+            pending_interactions=_pending_interactions,
         )
         root_agent = factory.create_root_agent()
         logger.info("task_agent_created", task_id=task_id, agent=root_agent.name)
@@ -205,3 +230,10 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
             "status": "failed",
             "error": f"[{error_type}] {error_msg}",
         })
+    finally:
+        # Clean up any orphaned pending interactions
+        orphaned = [iid for iid, f in _pending_interactions.items() if not f.done()]
+        for iid in orphaned:
+            future = _pending_interactions.pop(iid, None)
+            if future and not future.done():
+                future.cancel()

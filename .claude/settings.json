@@ -52,7 +52,16 @@
       "Bash(xargs grep -l \"CostTracker\")",
       "Bash(xargs grep -l \"call_llm\\\\|LLM\")",
       "Bash(xargs grep -l -i \"svg\\\\|diagram\\\\|graph\\\\|render\")",
-      "Bash(xargs wc -l)"
+      "Bash(xargs wc -l)",
+      "Read(//c/projects/**)",
+      "Bash(pip show google-adk)",
+      "Bash(python -c \"from google.adk.agents import Agent; help\\(Agent.__init__\\)\")",
+      "Bash(xargs grep -l \"output\")",
+      "Bash(python -c \"import site; print\\(''\\\\n''.join\\(site.getsitepackages\\(\\)\\)\\)\")",
+      "Read(//c/Python312/Lib/site-packages/**)",
+      "Bash(xargs grep -l \"sub_agent\\\\|sub-agent\")",
+      "WebFetch(domain:developers.googleblog.com)",
+      "Bash(cat backend/logs/*.log)"
     ]
   }
 }

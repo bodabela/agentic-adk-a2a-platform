@@ -24,6 +24,7 @@ export function useSSE() {
   const addTaskEvent = useTaskStore((s) => s.addEvent);
   const appendTaskStreamingText = useTaskStore((s) => s.appendStreamingText);
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
+  const addTaskInteraction = useTaskStore((s) => s.addInteraction);
   const updateFlowState = useFlowStore((s) => s.updateFlowState);
   const addFlowEvent = useFlowStore((s) => s.addFlowEvent);
   const appendFlowStreamingText = useFlowStore((s) => s.appendFlowStreamingText);
@@ -63,6 +64,26 @@ export function useSSE() {
     es.addEventListener('task_failed', (e) => {
       const data = JSON.parse(e.data);
       updateTaskStatus(data.task_id, 'failed', data.error);
+    });
+
+    es.addEventListener('task_input_required', (e) => {
+      const data = JSON.parse(e.data);
+      addTaskInteraction({
+        interaction_id: data.interaction_id,
+        task_id: data.task_id,
+        interaction_type: data.interaction_type,
+        prompt: data.prompt,
+        options: data.options,
+      });
+    });
+
+    es.addEventListener('task_user_response', (e) => {
+      const data = JSON.parse(e.data);
+      addTaskEvent(data.task_id, {
+        event_type: 'user_response',
+        timestamp: new Date().toISOString(),
+        data,
+      });
     });
 
     // --- Flow events: update state + collect into timeline ---
@@ -165,7 +186,7 @@ export function useSSE() {
     };
 
     eventSourceRef.current = es;
-  }, [addTaskEvent, appendTaskStreamingText, updateTaskStatus, updateFlowState, addFlowEvent, appendFlowStreamingText, addInteraction, addCostEvent]);
+  }, [addTaskEvent, appendTaskStreamingText, updateTaskStatus, addTaskInteraction, updateFlowState, addFlowEvent, appendFlowStreamingText, addInteraction, addCostEvent]);
 
   useEffect(() => {
     connect();

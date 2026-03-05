@@ -1,0 +1,6 @@
+{
+  "name": "user_agent",
+  "description": "Handles direct human interaction - asks the user for clarification, preferences, or decisions",
+  "capabilities": ["user_interaction", "clarification", "confirmation"],
+  "version": "0.1.0"
+}

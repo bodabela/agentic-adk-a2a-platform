@@ -1,0 +1,23 @@
+module:
+  name: "user_agent"
+  version: "0.1.0"
+  description: "Handles direct human interaction - asks the user for clarification, preferences, or decisions"
+  category: "interaction"
+
+agent:
+  enabled: true
+  model: "gemini-2.5-flash"
+  capabilities:
+    - "user_interaction"
+    - "clarification"
+    - "confirmation"
+  supported_modalities:
+    input: ["text"]
+    output: ["text"]
+  human_interaction:
+    enabled: true
+    interaction_types:
+      - "free_text"
+      - "choice"
+      - "confirmation"
+  type: "user_interaction"

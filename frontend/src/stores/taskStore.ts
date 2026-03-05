@@ -15,19 +15,37 @@ interface Task {
   error?: string;
 }
 
+interface InteractionOption {
+  id: string;
+  label: string;
+  recommended?: boolean;
+}
+
+export interface TaskPendingInteraction {
+  interaction_id: string;
+  task_id: string;
+  interaction_type: string;
+  prompt: string;
+  options?: InteractionOption[];
+}
+
 interface TaskStore {
   tasks: Record<string, Task>;
   activeTaskId: string | null;
+  pendingInteractions: TaskPendingInteraction[];
   submitTask: (description: string) => Promise<string>;
   addEvent: (taskId: string, event: TaskEvent) => void;
   appendStreamingText: (taskId: string, text: string, agent: string, isThought: boolean) => void;
   setActiveTask: (taskId: string | null) => void;
   updateTaskStatus: (taskId: string, status: string, error?: string) => void;
+  addInteraction: (interaction: TaskPendingInteraction) => void;
+  resolveInteraction: (interactionId: string) => void;
 }
 
 export const useTaskStore = create<TaskStore>((set) => ({
   tasks: {},
   activeTaskId: null,
+  pendingInteractions: [],
 
   submitTask: async (description: string) => {
     const res = await fetch('/api/tasks/', {
@@ -104,4 +122,16 @@ export const useTaskStore = create<TaskStore>((set) => ({
         },
       };
     }),
+
+  addInteraction: (interaction) =>
+    set((state) => ({
+      pendingInteractions: [...state.pendingInteractions, interaction],
+    })),
+
+  resolveInteraction: (interactionId) =>
+    set((state) => ({
+      pendingInteractions: state.pendingInteractions.filter(
+        (i) => i.interaction_id !== interactionId,
+      ),
+    })),
 }));
