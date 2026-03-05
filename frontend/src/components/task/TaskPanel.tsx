@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { TaskInput } from './TaskInput';
 import { TaskTimeline } from './TaskTimeline';
 import { TaskAgentDiagram } from './TaskAgentDiagram';
@@ -111,6 +111,20 @@ export function TaskPanel() {
 
   const activeTask = activeTaskId ? tasks[activeTaskId] : null;
 
+  // Derive active agent name from the latest task events
+  const activeAgentName = useMemo(() => {
+    if (!activeTask || activeTask.status === 'completed' || activeTask.status === 'failed') return '';
+    const evts = activeTask.events;
+    for (let i = evts.length - 1; i >= 0; i--) {
+      const d = evts[i].data as Record<string, unknown>;
+      const agent = (d.agent as string) || (d.author as string) || '';
+      if (agent && ['streaming_text', 'tool_call', 'agent_response', 'thinking'].includes(evts[i].event_type)) {
+        return agent;
+      }
+    }
+    return '';
+  }, [activeTask]);
+
   return (
     <div style={{ display: 'flex', gap: '1.5rem' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -146,7 +160,7 @@ export function TaskPanel() {
         </div>
       </div>
       <div style={{ width: 300, flexShrink: 0 }}>
-        <AgentPanel />
+        <AgentPanel activeAgentName={activeAgentName} />
       </div>
     </div>
   );

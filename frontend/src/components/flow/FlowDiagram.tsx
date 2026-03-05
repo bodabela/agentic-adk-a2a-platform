@@ -242,12 +242,13 @@ function computeLayout(
 
 /* ── SVG node shape renderers ──────────────────────────── */
 
-function NodeShape({ node, state, pos, config, isActive, toolUsage }: {
+function NodeShape({ node, state, pos, config, isActive, isHighlighted, toolUsage }: {
   node: StateNode;
   state: string;
   pos: NodePos;
   config: FlowDefinitionData['config'];
   isActive?: boolean;
+  isHighlighted?: boolean;
   toolUsage?: Record<string, number>;
 }) {
   const color = node.type === 'terminal' && node.status === 'failed'
@@ -366,6 +367,20 @@ function NodeShape({ node, state, pos, config, isActive, toolUsage }: {
           </rect>
         </>
       )}
+      {isHighlighted && !isActive && (
+        <rect
+          x={pos.x - 4}
+          y={pos.y - 4}
+          width={pos.w + 8}
+          height={pos.h + 8}
+          rx={10}
+          ry={10}
+          fill="none"
+          stroke="#22d3ee"
+          strokeWidth={2.5}
+          opacity={0.6}
+        />
+      )}
       {shape}
       {lines.map((line, i) => (
         <text
@@ -431,6 +446,8 @@ function EdgeLine({
   allEdgesFromSame,
   edgeIndex,
   svgWidth,
+  isActive,
+  allPositions,
 }: {
   edge: Edge;
   fromPos: NodePos;
@@ -438,6 +455,8 @@ function EdgeLine({
   allEdgesFromSame: number;
   edgeIndex: number;
   svgWidth: number;
+  isActive: boolean;
+  allPositions: Record<string, NodePos>;
 }) {
   const fromCx = fromPos.x + fromPos.w / 2;
   const fromBottom = fromPos.y + fromPos.h;
@@ -446,15 +465,61 @@ function EdgeLine({
 
   const isBackEdge = toPos.layer <= fromPos.layer;
 
-  let strokeColor = '#475569';
+  // Check if the bezier curve from→to would cross any node's bounding box
+  let crossesNode = false;
+  if (!isBackEdge) {
+    // Spread offset for multiple outgoing edges (compute early for bezier sampling)
+    const preSpread = allEdgesFromSame > 1
+      ? (edgeIndex - (allEdgesFromSame - 1) / 2) * 30
+      : 0;
+    const sampleFromX = fromCx + preSpread;
+    const sampleToX = toCx;
+    const sampleMidY = (fromBottom + toTop) / 2;
+
+    for (const pos of Object.values(allPositions)) {
+      if (pos.name === fromPos.name || pos.name === toPos.name) continue;
+      // Check nodes in intermediate layers AND same-layer siblings
+      const inPath = (pos.layer > fromPos.layer && pos.layer < toPos.layer) ||
+        (pos.layer === fromPos.layer && pos.name !== fromPos.name) ||
+        (pos.layer === toPos.layer && pos.name !== toPos.name);
+      if (!inPath) continue;
+
+      const margin = 12;
+      const nodeLeft = pos.x - margin;
+      const nodeRight = pos.x + pos.w + margin;
+      const nodeTop = pos.y - margin;
+      const nodeBottom = pos.y + pos.h + margin;
+
+      // Sample the cubic bezier at many t values
+      for (let t = 0.05; t <= 0.95; t += 0.05) {
+        const it = 1 - t;
+        // Cubic bezier: P0=(sampleFromX, fromBottom), P1=(sampleFromX, sampleMidY), P2=(sampleToX, sampleMidY), P3=(sampleToX, toTop)
+        const px = it * it * it * sampleFromX + 3 * it * it * t * sampleFromX + 3 * it * t * t * sampleToX + t * t * t * sampleToX;
+        const py = it * it * it * fromBottom + 3 * it * it * t * sampleMidY + 3 * it * t * t * sampleMidY + t * t * t * toTop;
+
+        if (px >= nodeLeft && px <= nodeRight && py >= nodeTop && py <= nodeBottom) {
+          crossesNode = true;
+          break;
+        }
+      }
+      if (crossesNode) break;
+    }
+  }
+
+  let baseStrokeColor = '#475569';
   let dashArray = '';
   if (edge.style === 'error') {
-    strokeColor = '#ef4444';
+    baseStrokeColor = '#ef4444';
     dashArray = '6 3';
   } else if (edge.style === 'decision') {
-    strokeColor = '#a78bfa';
+    baseStrokeColor = '#a78bfa';
     dashArray = '4 2';
   }
+
+  // Active edge overrides color
+  const strokeColor = isActive ? '#22d3ee' : baseStrokeColor;
+  const strokeWidth = isActive ? 2.5 : 1.5;
+  const markerSuffix = isActive ? 'active' : edge.style;
 
   // Spread offset for multiple outgoing edges
   const spread = allEdgesFromSame > 1
@@ -466,21 +531,81 @@ function EdgeLine({
   let labelY: number;
   let labelAnchor: 'start' | 'end' | 'middle' = 'start';
 
-  if (isBackEdge) {
-    // Route around the right side, far from nodes
-    const routeX = svgWidth - 20;
+  if (isBackEdge || crossesNode) {
+    // Route around via rectangular path with rounded corners.
+    // Key insight: never go horizontal at a node's Y level — that crosses sibling nodes.
+    // Instead: exit RIGHT from source → immediately turn UP/DOWN → horizontal in the gap
+    // between layers (no nodes there) → vertical to routing margin → into target.
+    const R = 14; // corner radius
+    const routeX = svgWidth - 25;
     const fromRight = fromPos.x + fromPos.w;
     const fromMidY = fromPos.y + fromPos.h / 2;
     const toRight = toPos.x + toPos.w;
     const toMidY = toPos.y + toPos.h / 2;
-    pathD = [
-      `M ${fromRight} ${fromMidY}`,
-      `C ${fromRight + 40} ${fromMidY}, ${routeX} ${fromMidY}, ${routeX} ${fromMidY - 30}`,
-      `L ${routeX} ${toMidY + 30}`,
-      `C ${routeX} ${toMidY}, ${toRight + 40} ${toMidY}, ${toRight} ${toMidY}`,
-    ].join(' ');
-    labelX = routeX + 6;
-    labelY = (fromMidY + toMidY) / 2;
+
+    if (isBackEdge) {
+      // Back-edge: source is below, target is above.
+      // Path: source right → up above source layer (gap) → right to routeX → up to target level → left into target
+      const channelX = fromRight + R + 2; // just right of source, then go vertical
+      const gapY = fromPos.y - 25;        // gap above source layer, safe from all nodes
+      pathD = [
+        `M ${fromRight} ${fromMidY}`,
+        // Right then UP (rounded corner)
+        `L ${channelX - R} ${fromMidY}`,
+        `Q ${channelX} ${fromMidY}, ${channelX} ${fromMidY - R}`,
+        // Up to gap above source layer
+        `L ${channelX} ${gapY + R}`,
+        // Turn RIGHT in gap (rounded corner)
+        `Q ${channelX} ${gapY}, ${channelX + R} ${gapY}`,
+        // Horizontal to routeX in the gap (no nodes here)
+        `L ${routeX - R} ${gapY}`,
+        // Turn UP at routeX (rounded corner)
+        `Q ${routeX} ${gapY}, ${routeX} ${gapY - R}`,
+        // Up to target midY level
+        `L ${routeX} ${toMidY + R}`,
+        // Turn LEFT toward target (rounded corner)
+        `Q ${routeX} ${toMidY}, ${routeX - R} ${toMidY}`,
+        // Left into target right side
+        `L ${toRight} ${toMidY}`,
+      ].join(' ');
+      labelX = routeX + 6;
+      labelY = (gapY + toMidY) / 2;
+    } else {
+      // Forward edge crossing nodes: route right side
+      // Path: source right → down below source layer (gap) → right to routeX → down to target level → left into target
+      let maxRight = 0;
+      for (const pos of Object.values(allPositions)) {
+        if (pos.name === fromPos.name || pos.name === toPos.name) continue;
+        if (pos.layer >= fromPos.layer && pos.layer <= toPos.layer) {
+          maxRight = Math.max(maxRight, pos.x + pos.w);
+        }
+      }
+      const rX = Math.max(maxRight, fromRight, toRight) + 50 + spread;
+      const channelX = fromRight + R + 2;
+      const gapY = fromPos.y + fromPos.h + 25; // gap below source layer
+      pathD = [
+        `M ${fromRight} ${fromMidY}`,
+        // Right then DOWN (rounded corner)
+        `L ${channelX - R} ${fromMidY}`,
+        `Q ${channelX} ${fromMidY}, ${channelX} ${fromMidY + R}`,
+        // Down to gap below source layer
+        `L ${channelX} ${gapY - R}`,
+        // Turn RIGHT in gap (rounded corner)
+        `Q ${channelX} ${gapY}, ${channelX + R} ${gapY}`,
+        // Horizontal to routeX in the gap
+        `L ${rX - R} ${gapY}`,
+        // Turn DOWN at routeX (rounded corner)
+        `Q ${rX} ${gapY}, ${rX} ${gapY + R}`,
+        // Down to target midY level
+        `L ${rX} ${toMidY - R}`,
+        // Turn LEFT toward target (rounded corner)
+        `Q ${rX} ${toMidY}, ${rX - R} ${toMidY}`,
+        // Left into target right side
+        `L ${toRight} ${toMidY}`,
+      ].join(' ');
+      labelX = rX + 6;
+      labelY = (gapY + toMidY) / 2;
+    }
   } else {
     const startX = fromCx + spread;
     const endX = toCx;
@@ -502,10 +627,22 @@ function EdgeLine({
         d={pathD}
         fill="none"
         stroke={strokeColor}
-        strokeWidth={1.5}
+        strokeWidth={strokeWidth}
         strokeDasharray={dashArray}
-        markerEnd={`url(#arrow-${edge.style})`}
+        markerEnd={`url(#arrow-${markerSuffix})`}
       />
+      {isActive && (
+        <path
+          d={pathD}
+          fill="none"
+          stroke="#22d3ee"
+          strokeWidth={3.5}
+          strokeDasharray={dashArray}
+          opacity={0.4}
+        >
+          <animate attributeName="opacity" values="0.15;0.5;0.15" dur="1.5s" repeatCount="indefinite" />
+        </path>
+      )}
       {edge.label && (
         <>
           <rect
@@ -536,9 +673,11 @@ function EdgeLine({
 
 /* ── Main component ────────────────────────────────────── */
 
-export function FlowDiagram({ definition, activeState, toolUsageByState = {} }: {
+export function FlowDiagram({ definition, activeState, previousState, flowStatus, toolUsageByState = {} }: {
   definition: FlowDefinitionData;
   activeState?: string;
+  previousState?: string;
+  flowStatus?: string;
   toolUsageByState?: Record<string, Record<string, number>>;
 }) {
   const { edges, positions, width, height } = useMemo(() => {
@@ -606,6 +745,9 @@ export function FlowDiagram({ definition, activeState, toolUsageByState = {} }: 
           <marker id="arrow-decision" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
             <polygon points="0 0, 8 3, 0 6" fill="#a78bfa" />
           </marker>
+          <marker id="arrow-active" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#22d3ee" />
+          </marker>
         </defs>
 
         {/* Edges (rendered first = behind nodes) */}
@@ -615,6 +757,9 @@ export function FlowDiagram({ definition, activeState, toolUsageByState = {} }: 
           if (!fromPos || !toPos) return null;
           const sourceEdges = edgesBySource[edge.from] || [];
           const edgeIndex = sourceEdges.indexOf(edge);
+          // Highlight edge connecting previousState → activeState (only while running)
+          const edgeIsActive = flowStatus === 'running' && !!(previousState && activeState
+            && edge.from === previousState && edge.to === activeState);
           return (
             <EdgeLine
               key={`${edge.from}-${edge.to}-${edge.label}-${i}`}
@@ -624,6 +769,8 @@ export function FlowDiagram({ definition, activeState, toolUsageByState = {} }: 
               allEdgesFromSame={sourceEdges.length}
               edgeIndex={edgeIndex}
               svgWidth={width}
+              isActive={edgeIsActive}
+              allPositions={positions}
             />
           );
         })}
@@ -639,7 +786,8 @@ export function FlowDiagram({ definition, activeState, toolUsageByState = {} }: 
               state={stateName}
               pos={pos}
               config={definition.config}
-              isActive={stateName === activeState}
+              isActive={flowStatus === 'running' && stateName === activeState}
+              isHighlighted={flowStatus !== 'running' && stateName === activeState}
               toolUsage={toolUsageByState[stateName]}
             />
           );

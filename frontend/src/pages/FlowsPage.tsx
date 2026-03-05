@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FlowStatus, MultiQuestionForm } from '../components/flow/FlowStatus';
 import { FlowDiagram, type FlowDefinitionData } from '../components/flow/FlowDiagram';
 import { useFlowStore } from '../stores/flowStore';
@@ -42,6 +42,7 @@ export function FlowsPage() {
   const resolveInteraction = useFlowStore((s) => s.resolveInteraction);
   const [freeTextValues, setFreeTextValues] = useState<Record<string, string>>({});
   const [multiAnswers, setMultiAnswers] = useState<Record<string, Record<string, string>>>({});
+  const eventDetailRef = useRef<HTMLDivElement>(null);
 
   // LLM provider/model state
   const [providersData, setProvidersData] = useState<Record<string, ProviderInfo>>({});
@@ -146,6 +147,21 @@ export function FlowsPage() {
   })();
   const activeState = matchingFlow?.currentState || undefined;
 
+  // Derive the previous state (the state before the current one) for edge highlighting
+  const previousState: string | undefined = (() => {
+    if (!matchingFlow || !activeState) return undefined;
+    const stateEntries = matchingFlow.events
+      .filter((e) => e.event_type === 'flow_state_entered')
+      .map((e) => e.data.state as string);
+    // Find the state just before the current active one
+    for (let i = stateEntries.length - 1; i >= 0; i--) {
+      if (stateEntries[i] === activeState && i > 0) {
+        return stateEntries[i - 1];
+      }
+    }
+    return undefined;
+  })();
+
   // Compute per-state tool usage counts from events: { [stateName]: { [toolName]: count } }
   const toolUsageByState: Record<string, Record<string, number>> = (() => {
     if (!matchingFlow) return {};
@@ -162,6 +178,12 @@ export function FlowsPage() {
     }
     return result;
   })();
+
+  // Auto-scroll event detail to bottom when new content arrives
+  useEffect(() => {
+    const el = eventDetailRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [matchingFlow?.events.length]);
 
   const currentModels = selectedProvider && providersData[selectedProvider]
     ? providersData[selectedProvider].models
@@ -331,6 +353,7 @@ export function FlowsPage() {
 
             return (
               <div
+                ref={eventDetailRef}
                 style={{
                   marginTop: '0.75rem',
                   padding: '0.5rem 0.625rem',
@@ -507,7 +530,7 @@ export function FlowsPage() {
               Loading flow diagram...
             </div>
           ) : flowDefinition ? (
-            <FlowDiagram definition={flowDefinition} activeState={activeState} toolUsageByState={toolUsageByState} />
+            <FlowDiagram definition={flowDefinition} activeState={activeState} previousState={previousState} flowStatus={matchingFlow?.status} toolUsageByState={toolUsageByState} />
           ) : (
             <div style={{
               color: '#475569',

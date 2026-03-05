@@ -276,7 +276,7 @@ function DiagramNodeShape({ node, pos, isActive, isCompleted, taskStatus, tools 
             rx={12} ry={12}
             fill="none" stroke="#22d3ee" strokeWidth={2.5} opacity={0.3}
           >
-            <animate attributeName="opacity" values="0.1;0.4;0.1" dur="2s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.1;0.5;0.1" dur="1.5s" repeatCount="indefinite" />
           </rect>
           <rect
             x={pos.x - 3} y={pos.y - 3}
@@ -284,7 +284,7 @@ function DiagramNodeShape({ node, pos, isActive, isCompleted, taskStatus, tools 
             rx={10} ry={10}
             fill="none" stroke="#22d3ee" strokeWidth={2.5} opacity={0.8}
           >
-            <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.4;1;0.4" dur="1.5s" repeatCount="indefinite" />
           </rect>
         </>
       )}
@@ -292,8 +292,14 @@ function DiagramNodeShape({ node, pos, isActive, isCompleted, taskStatus, tools 
       <rect
         x={pos.x} y={pos.y} width={pos.w} height={pos.h}
         rx={node.type === 'user' ? 16 : 6} ry={node.type === 'user' ? 16 : 6}
-        fill={color + '18'} stroke={color} strokeWidth={2}
-      />
+        fill={showPulse ? color + '30' : color + '18'}
+        stroke={showPulse ? '#22d3ee' : color}
+        strokeWidth={showPulse ? 2.5 : 2}
+      >
+        {showPulse && (
+          <animate attributeName="fill" values={`${color}20;${color}40;${color}20`} dur="1.5s" repeatCount="indefinite" />
+        )}
+      </rect>
 
       <text
         x={cx} y={cy - 6}
@@ -349,71 +355,78 @@ function DiagramNodeShape({ node, pos, isActive, isCompleted, taskStatus, tools 
 
 /* ── SVG edge renderer ─────────────────────────────────── */
 
-function DiagramEdgeLine({ edge, fromPos, toPos, isLatest, taskStatus }: {
+function DiagramEdgeLine({ edge, fromPos, toPos, isLatest, taskStatus, pairIndex, pairCount }: {
   edge: DiagramEdge;
   fromPos: NodePos;
   toPos: NodePos;
   isLatest: boolean;
   taskStatus: string;
+  pairIndex: number;   // 0-based index among edges sharing this node pair
+  pairCount: number;   // total edges between this node pair
 }) {
   const isReturn = edge.type === 'return';
-  // Offset return edges so they don't overlap forward edges between the same pair
-  const OFFSET = isReturn ? 16 : 0;
 
   const fromCx = fromPos.x + fromPos.w / 2;
   const fromCy = fromPos.y + fromPos.h / 2;
   const toCx = toPos.x + toPos.w / 2;
   const toCy = toPos.y + toPos.h / 2;
 
-  // Determine connection points based on relative positions
-  let startX: number, startY: number, endX: number, endY: number;
+  // Spread: each edge in a pair gets a unique offset so endpoints never coincide
+  const SPREAD = 22;
+  const spreadOffset = pairCount > 1
+    ? (pairIndex - (pairCount - 1) / 2) * SPREAD
+    : 0;
 
   const dx = toCx - fromCx;
   const dy = toCy - fromCy;
+  const isVertical = Math.abs(dy) > Math.abs(dx);
 
-  if (Math.abs(dy) > Math.abs(dx)) {
-    // Mostly vertical — offset horizontally for return edges
+  // Connection points: spread along the node border so each arrow
+  // starts/ends at a distinct point (not all converging to center)
+  let startX: number, startY: number, endX: number, endY: number;
+
+  if (isVertical) {
+    // Vertical: arrows exit/enter top/bottom edges, spread along X
     if (dy > 0) {
-      startX = fromCx + OFFSET; startY = fromPos.y + fromPos.h;
-      endX = toCx + OFFSET; endY = toPos.y;
+      startX = fromCx + spreadOffset; startY = fromPos.y + fromPos.h;
+      endX = toCx + spreadOffset;     endY = toPos.y;
     } else {
-      startX = fromCx + OFFSET; startY = fromPos.y;
-      endX = toCx + OFFSET; endY = toPos.y + toPos.h;
+      startX = fromCx + spreadOffset; startY = fromPos.y;
+      endX = toCx + spreadOffset;     endY = toPos.y + toPos.h;
     }
   } else {
-    // Mostly horizontal — offset vertically for return edges
+    // Horizontal: arrows exit/enter left/right edges, spread along Y
     if (dx > 0) {
-      startX = fromPos.x + fromPos.w; startY = fromCy + OFFSET;
-      endX = toPos.x; endY = toCy + OFFSET;
+      startX = fromPos.x + fromPos.w; startY = fromCy + spreadOffset;
+      endX = toPos.x;                 endY = toCy + spreadOffset;
     } else {
-      startX = fromPos.x; startY = fromCy + OFFSET;
-      endX = toPos.x + toPos.w; endY = toCy + OFFSET;
+      startX = fromPos.x;             startY = fromCy + spreadOffset;
+      endX = toPos.x + toPos.w;       endY = toCy + spreadOffset;
     }
   }
 
   const midX = (startX + endX) / 2;
   const midY = (startY + endY) / 2;
 
-  // Curve control points — return edges get extra curve offset
+  // Curve: each edge gets a proportional bulge perpendicular to the line
+  const baseCurve = pairCount > 1 ? spreadOffset * 1.5 : 0;
   let pathD: string;
-  const curveOffset = isReturn ? 20 : 0;
-  if (Math.abs(dy) > Math.abs(dx)) {
-    pathD = `M ${startX} ${startY} C ${startX + curveOffset} ${midY}, ${endX + curveOffset} ${midY}, ${endX} ${endY}`;
+  if (isVertical) {
+    pathD = `M ${startX} ${startY} C ${startX + baseCurve} ${midY}, ${endX + baseCurve} ${midY}, ${endX} ${endY}`;
   } else {
-    pathD = `M ${startX} ${startY} C ${midX} ${startY + curveOffset}, ${midX} ${endY + curveOffset}, ${endX} ${endY}`;
+    pathD = `M ${startX} ${startY} C ${midX} ${startY + baseCurve}, ${midX} ${endY + baseCurve}, ${endX} ${endY}`;
   }
 
   const showAnimation = isLatest && taskStatus !== 'completed' && taskStatus !== 'failed';
 
-  // Both forward and return edges use the same color scheme;
-  // return edges are distinguished only by dashed stroke
   const strokeColor = showAnimation ? '#22d3ee' : '#475569';
   const markerType = showAnimation ? 'active' : 'normal';
   const strokeWidth = isLatest ? 2 : 1.5;
 
-  // Badge position
-  const badgeX = midX + (isReturn ? curveOffset / 2 : 0);
-  const badgeY = midY + (isReturn && Math.abs(dy) <= Math.abs(dx) ? curveOffset / 2 : 0);
+  // Badge: sits on the curve midpoint, shifted with the curve so badges never overlap
+  const curveShift = pairCount > 1 ? baseCurve * 0.5 : 0;
+  const badgeX = midX + (isVertical ? curveShift : 0);
+  const badgeY = midY + (isVertical ? 0 : curveShift);
   const badgeText = `${edge.index}`;
 
   return (
@@ -467,6 +480,21 @@ export function TaskAgentDiagram({ events, status }: {
     () => computeLayout(nodes, edges, toolUsage),
     [nodes, edges, toolUsage],
   );
+
+  // Pre-compute pair groupings for edge spread
+  const edgePairInfo = useMemo(() => {
+    const pairMap = new Map<string, number[]>();
+    edges.forEach((edge, i) => {
+      const key = [edge.from, edge.to].sort().join('::');
+      if (!pairMap.has(key)) pairMap.set(key, []);
+      pairMap.get(key)!.push(i);
+    });
+    return edges.map((edge, i) => {
+      const key = [edge.from, edge.to].sort().join('::');
+      const group = pairMap.get(key)!;
+      return { pairIndex: group.indexOf(i), pairCount: group.length };
+    });
+  }, [edges]);
 
   if (nodes.length === 0) return null;
 
@@ -524,6 +552,7 @@ export function TaskAgentDiagram({ events, status }: {
           const fromPos = positions[edge.from];
           const toPos = positions[edge.to];
           if (!fromPos || !toPos) return null;
+          const { pairIndex, pairCount } = edgePairInfo[i];
           return (
             <DiagramEdgeLine
               key={`${edge.from}-${edge.to}-${edge.index}`}
@@ -532,6 +561,8 @@ export function TaskAgentDiagram({ events, status }: {
               toPos={toPos}
               isLatest={i === edges.length - 1}
               taskStatus={status}
+              pairIndex={pairIndex}
+              pairCount={pairCount}
             />
           );
         })}
