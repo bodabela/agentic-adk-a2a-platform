@@ -1,6 +1,7 @@
 """Task management API."""
 
 import asyncio
+import time
 import traceback
 import uuid
 from typing import Any
@@ -130,6 +131,10 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
 
         from google.adk.agents.run_config import RunConfig, StreamingMode
 
+        cost_tracker = request.app.state.cost_tracker
+        default_provider = llm_config.defaults.provider or "google"
+        last_event_time = time.monotonic()
+
         async for event in runner.run_async(
             user_id="user", session_id=session.id, new_message=user_message,
             run_config=RunConfig(streaming_mode=StreamingMode.SSE),
@@ -137,6 +142,29 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
             author = getattr(event, "author", None) or ""
             content = getattr(event, "content", None)
             is_partial = getattr(event, "partial", False)
+
+            # Record cost from usage_metadata on non-partial events
+            usage = getattr(event, "usage_metadata", None)
+            if usage and not is_partial:
+                now = time.monotonic()
+                latency = int((now - last_event_time) * 1000)
+                last_event_time = now
+                input_tokens = usage.prompt_token_count or 0
+                output_tokens = usage.candidates_token_count or 0
+                model_version = getattr(event, "model_version", None) or default_model
+                try:
+                    await cost_tracker.record_llm_call(
+                        task_id=task_id,
+                        module=author or "root_agent",
+                        agent=author or "root_agent",
+                        model=model_version,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        latency_ms=latency,
+                        provider=default_provider,
+                    )
+                except Exception as cost_err:
+                    logger.warning("cost_tracking_failed", error=str(cost_err))
 
             if not content or not hasattr(content, "parts"):
                 continue
