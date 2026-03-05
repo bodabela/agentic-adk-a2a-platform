@@ -153,6 +153,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                             "event_type": "streaming_text",
                             "agent": author,
                             "author": author,
+                            "model": default_model,
                             "text": part.text,
                             "is_thought": bool(is_thought),
                         })
@@ -168,6 +169,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                             "event_type": "thinking",
                             "agent": author,
                             "author": author,
+                            "model": default_model,
                             "text": part.text,
                             "is_thought": bool(is_thought),
                         })
@@ -177,6 +179,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                             "event_type": "agent_response",
                             "agent": author,
                             "author": author,
+                            "model": default_model,
                             "text": part.text,
                         })
                     await asyncio.sleep(0)
@@ -187,6 +190,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                         "event_type": "tool_call",
                         "agent": author,
                         "author": author,
+                        "model": default_model,
                         "tool_name": fc.name,
                         "tool_args": dict(fc.args) if fc.args else {},
                     })
@@ -203,6 +207,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                         "event_type": "tool_result",
                         "agent": author,
                         "author": author,
+                        "model": default_model,
                         "tool_name": fr.name,
                         "tool_response": resp_data,
                     })

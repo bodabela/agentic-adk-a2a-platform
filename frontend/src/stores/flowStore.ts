@@ -46,7 +46,7 @@ interface FlowStore {
   pendingInteractions: PendingInteraction[];
   updateFlowState: (flowId: string, update: Partial<FlowState>) => void;
   addFlowEvent: (flowId: string, event: FlowEvent) => void;
-  appendFlowStreamingText: (flowId: string, text: string, agent: string, isThought: boolean) => void;
+  appendFlowStreamingText: (flowId: string, text: string, agent: string, isThought: boolean, model?: string) => void;
   addInteraction: (interaction: PendingInteraction) => void;
   resolveInteraction: (interactionId: string) => void;
   startFlow: (flowFile: string, input: Record<string, unknown>, provider?: string, model?: string) => Promise<void>;
@@ -76,7 +76,7 @@ export const useFlowStore = create<FlowStore>((set) => ({
       };
     }),
 
-  appendFlowStreamingText: (flowId, text, agent, isThought) =>
+  appendFlowStreamingText: (flowId, text, agent, isThought, model) =>
     set((state) => {
       const flow = state.activeFlows[flowId];
       if (!flow) return state;
@@ -92,7 +92,7 @@ export const useFlowStore = create<FlowStore>((set) => ({
         events.push({
           event_type: 'flow_agent_streaming_text',
           timestamp: new Date().toISOString(),
-          data: { agent, text, is_thought: isThought },
+          data: { agent, text, is_thought: isThought, model: model || '' },
         });
       }
       return {

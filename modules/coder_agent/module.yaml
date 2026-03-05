@@ -6,7 +6,7 @@ module:
 
 agent:
   enabled: true
-  model: "gemini-3.1-pro-preview"
+  model: "gemini-3.1-flash-lite-preview"
   model_fallback: "gemini-2.5-flash"
   max_tokens: 8192
   mode: "on_demand"

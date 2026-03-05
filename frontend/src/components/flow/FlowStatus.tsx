@@ -1,6 +1,50 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFlowStore, type FlowEvent, type InteractionQuestion } from '../../stores/flowStore';
 
+/** Format millisecond delta as human-readable elapsed time. */
+function formatDelta(ms: number): string {
+  if (ms < 1000) return `+${ms}ms`;
+  if (ms < 60_000) return `+${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.round((ms % 60_000) / 1000);
+  return `+${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+/** Format total elapsed ms as human-readable duration. */
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
+}
+
+/** Shows live elapsed time for running flows, final duration for completed ones. */
+function ElapsedTime({ events, isRunning }: { events: { timestamp: string }[]; isRunning: boolean }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isRunning]);
+
+  if (events.length === 0) return null;
+  const startTs = new Date(events[0].timestamp).getTime();
+  const endTs = isRunning ? now : new Date(events[events.length - 1].timestamp).getTime();
+  const elapsed = endTs - startTs;
+  if (elapsed < 0) return null;
+
+  return (
+    <span style={{ color: isRunning ? '#fbbf24' : '#94a3b8', fontSize: '1.05rem', fontFamily: 'monospace' }}>
+      {formatElapsed(elapsed)}
+    </span>
+  );
+}
+
 /** Human-readable summary for each flow event type. */
 function eventSummary(evt: FlowEvent): string {
   const d = evt.data;
@@ -20,22 +64,22 @@ function eventSummary(evt: FlowEvent): string {
       return `Agent "${d.agent}" completed${d.output_summary ? `\n${d.output_summary}` : ''}${fileLine}`;
     }
     case 'flow_agent_thinking':
-      return `${d.agent} ${d.is_thought ? 'thought' : 'thinking'}: ${d.text}`;
+      return `${d.is_thought ? 'thought' : 'thinking'}: ${d.text}`;
     case 'flow_agent_tool_use':
-      return `${d.agent} calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`;
+      return `calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`;
     case 'flow_agent_tool_result': {
       const resp = typeof d.tool_response === 'string'
         ? d.tool_response
         : JSON.stringify(d.tool_response || '', null, 2);
       const truncated = resp.length > 300 ? resp.slice(0, 300) + '...' : resp;
-      return `${d.agent} tool result [${d.tool_name}]: ${truncated}`;
+      return `tool result [${d.tool_name}]: ${truncated}`;
     }
     case 'flow_agent_streaming_text': {
       const text = String(d.text || '');
-      return `${d.agent || ''}: ${text.length > 500 ? text.slice(0, 500) + '...' : text}`;
+      return text.length > 500 ? text.slice(0, 500) + '...' : text;
     }
     case 'flow_llm_decision':
-      return `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''} [${d.provider}/${d.model}]`;
+      return `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''}`;
     case 'flow_input_required':
       return `Waiting for user input: ${d.prompt || d.interaction_type}`;
     case 'flow_user_response':
@@ -170,7 +214,7 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
     <div
       ref={containerRef}
       style={{
-        maxHeight: 300,
+        maxHeight: 500,
         overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
@@ -180,8 +224,14 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
     >
       {events.map((evt, i) => {
         const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
+        const prevTs = i > 0 ? new Date(events[i - 1].timestamp).getTime() : 0;
+        const curTs = evt.timestamp ? new Date(evt.timestamp).getTime() : 0;
+        const delta = i > 0 && prevTs && curTs ? curTs - prevTs : 0;
         const summary = eventSummary(evt);
         const agent = (evt.data.agent as string) || (evt.data.author as string) || '';
+        const rawModel = (evt.data.model as string) || '';
+        const rawProvider = (evt.data.provider as string) || '';
+        const model = rawProvider && rawModel ? `${rawProvider}/${rawModel}` : rawModel;
 
         // Color coding for streaming events
         let eventColor = '#60a5fa'; // default blue
@@ -210,8 +260,10 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
           >
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: summary ? '0.25rem' : 0 }}>
               <span style={{ color: '#475569' }}>{time}</span>
+              {delta > 0 && <span style={{ color: '#f59e0b' }}>{formatDelta(delta)}</span>}
               <span style={{ color: eventColor }}>{evt.event_type}</span>
               {agent && <span style={{ color: '#a78bfa' }}>{agent}</span>}
+              {model && <span style={{ color: '#64748b' }}>[{model}]</span>}
             </div>
             {summary && (
               <div style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -260,17 +312,20 @@ export function FlowStatus() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{flow.flowName}</span>
-                <span
-                  style={{
-                    fontSize: '1.125rem',
-                    padding: '0.125rem 0.5rem',
-                    borderRadius: 4,
-                    background: flow.status === 'completed' ? '#14532d' : '#1e3a5f',
-                    color: flow.status === 'completed' ? '#4ade80' : '#60a5fa',
-                  }}
-                >
-                  {flow.status}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <ElapsedTime events={events} isRunning={flow.status !== 'completed' && flow.status !== 'failed'} />
+                  <span
+                    style={{
+                      fontSize: '1.125rem',
+                      padding: '0.125rem 0.5rem',
+                      borderRadius: 4,
+                      background: flow.status === 'completed' ? '#14532d' : '#1e3a5f',
+                      color: flow.status === 'completed' ? '#4ade80' : '#60a5fa',
+                    }}
+                  >
+                    {flow.status}
+                  </span>
+                </div>
               </div>
               <div style={{ color: '#94a3b8', fontSize: '1.2rem' }}>
                 Current state: <span style={{ color: '#38bdf8' }}>{flow.currentState || '...'}</span>

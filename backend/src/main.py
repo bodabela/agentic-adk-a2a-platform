@@ -1,5 +1,8 @@
 """FastAPI application entry point."""
 
+import asyncio
+import importlib
+import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -19,6 +22,18 @@ from src.common.logging import setup_logging
 
 settings = Settings()
 
+_log = logging.getLogger("startup")
+
+
+def _prewarm_mcp_deps() -> None:
+    """Import MCP server dependencies so bytecode / FS cache is warm."""
+    for mod in ("mcp.server.fastmcp", "pathlib", "argparse"):
+        try:
+            importlib.import_module(mod)
+        except Exception:
+            pass
+    _log.info("MCP dependencies pre-warmed")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +46,10 @@ async def lifespan(app: FastAPI):
     app.state.cost_tracker = CostTracker(app.state.event_bus, llm_config=app.state.llm_config)
     app.state.agent_registry = AgentRegistry(settings.modules_dir)
     await app.state.agent_registry.discover_agents()
+
+    # Pre-warm MCP server dependencies into filesystem / bytecode cache
+    await asyncio.to_thread(_prewarm_mcp_deps)
+
     yield
     # Shutdown
     await app.state.event_bus.shutdown()

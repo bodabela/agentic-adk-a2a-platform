@@ -3,6 +3,50 @@ import { useTaskStore } from '../../stores/taskStore';
 
 type TaskEvent = { event_type: string; timestamp: string; data: unknown };
 
+/** Format millisecond delta as human-readable elapsed time. */
+function formatDelta(ms: number): string {
+  if (ms < 1000) return `+${ms}ms`;
+  if (ms < 60_000) return `+${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.round((ms % 60_000) / 1000);
+  return `+${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+/** Format total elapsed ms as human-readable duration. */
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
+}
+
+/** Shows live elapsed time for running tasks, final duration for completed ones. */
+function ElapsedTime({ events, isRunning }: { events: { timestamp: string }[]; isRunning: boolean }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isRunning]);
+
+  if (events.length === 0) return null;
+  const startTs = new Date(events[0].timestamp).getTime();
+  const endTs = isRunning ? now : new Date(events[events.length - 1].timestamp).getTime();
+  const elapsed = endTs - startTs;
+  if (elapsed < 0) return null;
+
+  return (
+    <span style={{ color: isRunning ? '#fbbf24' : '#94a3b8', fontSize: '1.05rem', fontFamily: 'monospace' }}>
+      {formatElapsed(elapsed)}
+    </span>
+  );
+}
+
 /** Derive a color pair for each event type. */
 function eventStyle(eventType: string): { color: string; border: string } {
   if (eventType.includes('thinking')) return { color: '#a78bfa', border: '#2e1065' };
@@ -23,25 +67,25 @@ function eventSummary(evt: TaskEvent): string {
   const evtType = evt.event_type;
 
   if (evtType.includes('thinking')) {
-    return `${d.agent || d.author || ''} ${d.is_thought ? 'thought' : 'thinking'}: ${d.text || ''}`;
+    return `${d.is_thought ? 'thought' : 'thinking'}: ${d.text || ''}`;
   }
   if (evtType.includes('tool_use') || evtType.includes('tool_call')) {
-    return `${d.agent || d.author || ''} calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`;
+    return `calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`;
   }
   if (evtType.includes('tool_result')) {
     const resp = typeof d.tool_response === 'string'
       ? d.tool_response
       : JSON.stringify(d.tool_response || '', null, 2);
     const truncated = resp.length > 300 ? resp.slice(0, 300) + '...' : resp;
-    return `${d.agent || d.author || ''} tool result [${d.tool_name}]: ${truncated}`;
+    return `tool result [${d.tool_name}]: ${truncated}`;
   }
   if (evtType === 'streaming_text') {
     const text = String(d.text || '');
-    return `${d.agent || d.author || ''}: ${text.length > 500 ? text.slice(0, 500) + '...' : text}`;
+    return text.length > 500 ? text.slice(0, 500) + '...' : text;
   }
   if (evtType === 'agent_response') {
     const text = String(d.text || '');
-    return `${d.agent || d.author || ''}: ${text.length > 500 ? text.slice(0, 500) + '...' : text}`;
+    return text.length > 500 ? text.slice(0, 500) + '...' : text;
   }
 
   // Fallback: use summary field or stringify relevant fields
@@ -80,10 +124,14 @@ function EventList({ events }: { events: TaskEvent[] }) {
     >
       {events.map((evt, i) => {
         const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
+        const prevTs = i > 0 ? new Date(events[i - 1].timestamp).getTime() : 0;
+        const curTs = evt.timestamp ? new Date(evt.timestamp).getTime() : 0;
+        const delta = i > 0 && prevTs && curTs ? curTs - prevTs : 0;
         const summary = eventSummary(evt);
         const style = eventStyle(evt.event_type);
         const d = evt.data as Record<string, unknown> | undefined;
         const agent = (d?.agent as string) || (d?.author as string) || '';
+        const model = (d?.model as string) || '';
 
         return (
           <div
@@ -99,8 +147,10 @@ function EventList({ events }: { events: TaskEvent[] }) {
           >
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: summary ? '0.25rem' : 0 }}>
               <span style={{ color: '#475569' }}>{time}</span>
+              {delta > 0 && <span style={{ color: '#f59e0b' }}>{formatDelta(delta)}</span>}
               <span style={{ color: style.color }}>{evt.event_type}</span>
               {agent && <span style={{ color: '#a78bfa' }}>{agent}</span>}
+              {model && <span style={{ color: '#64748b' }}>[{model}]</span>}
             </div>
             {summary && (
               <div style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -153,23 +203,26 @@ export function TaskTimeline() {
               <span style={{ color: '#e2e8f0', fontWeight: 600 }}>
                 {task.description.slice(0, 80)}{task.description.length > 80 ? '...' : ''}
               </span>
-              <span
-                style={{
-                  fontSize: '1.125rem',
-                  padding: '0.125rem 0.5rem',
-                  borderRadius: 4,
-                  background:
-                    task.status === 'completed' ? '#14532d' :
-                    task.status === 'failed' ? '#7f1d1d' :
-                    '#1e3a5f',
-                  color:
-                    task.status === 'completed' ? '#4ade80' :
-                    task.status === 'failed' ? '#f87171' :
-                    '#60a5fa',
-                }}
-              >
-                {task.status}{isRunning ? '...' : ''}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ElapsedTime events={task.events} isRunning={isRunning} />
+                <span
+                  style={{
+                    fontSize: '1.125rem',
+                    padding: '0.125rem 0.5rem',
+                    borderRadius: 4,
+                    background:
+                      task.status === 'completed' ? '#14532d' :
+                      task.status === 'failed' ? '#7f1d1d' :
+                      '#1e3a5f',
+                    color:
+                      task.status === 'completed' ? '#4ade80' :
+                      task.status === 'failed' ? '#f87171' :
+                      '#60a5fa',
+                  }}
+                >
+                  {task.status}{isRunning ? '...' : ''}
+                </span>
+              </div>
             </div>
 
             {task.error && (

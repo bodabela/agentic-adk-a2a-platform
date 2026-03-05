@@ -7,6 +7,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 logger = logging.getLogger("flow_engine")
@@ -238,6 +239,16 @@ class FlowEngine:
         )
         return provider, model
 
+    def _resolve_agent_model(self, agent_name: str) -> str:
+        """Resolve the effective model for an agent: runtime override or module.yaml."""
+        if self.runtime_model:
+            return self.runtime_model
+        if self.agent_registry:
+            info = self.agent_registry.get_agent(agent_name)
+            if info:
+                return info.module_yaml.get("agent", {}).get("model", "")
+        return ""
+
     async def _handle_agent_task(
         self,
         node: AgentTaskNode,
@@ -251,6 +262,7 @@ class FlowEngine:
             retry_mgr.check_and_increment(context, node.retry_loop)
 
         resolved_input = context.resolve_dict(node.input)
+        agent_model = self._resolve_agent_model(node.agent)
 
         await self.event_bus.emit(
             "flow_agent_task_started",
@@ -258,12 +270,13 @@ class FlowEngine:
                 "flow_id": flow_id,
                 "state": state_name,
                 "agent": node.agent,
+                "model": agent_model,
                 "input": resolved_input,
             },
         )
 
         # Invoke the agent via A2A JSON-RPC
-        output = await self._call_agent_a2a(node.agent, resolved_input, flow_id)
+        output = await self._call_agent_a2a(node.agent, resolved_input, flow_id, agent_model)
 
         # Record cost from agent usage data (estimated tokens from A2A response)
         usage = output.pop("_usage", None)
@@ -283,7 +296,7 @@ class FlowEngine:
                 logger.warning("[Cost] Failed to record agent cost: %s", cost_err)
 
         # Scan workspace for generated files and include contents
-        workspace_files = self._scan_workspace(node.agent)
+        workspace_files = await self._scan_workspace(node.agent)
         if workspace_files:
             output["source_files"] = workspace_files
 
@@ -297,6 +310,7 @@ class FlowEngine:
                 "flow_id": flow_id,
                 "state": state_name,
                 "agent": node.agent,
+                "model": agent_model,
                 "output_summary": str(output.get("result", ""))[:3000] if isinstance(output, dict) else str(output)[:3000],
                 "workspace_files": [f["path"] for f in workspace_files] if workspace_files else [],
             },
@@ -363,6 +377,7 @@ class FlowEngine:
         agent_name: str,
         task_input: dict[str, Any],
         flow_id: str,
+        agent_model: str = "",
     ) -> dict[str, Any]:
         """Call an agent via A2A, always using SSE streaming with sync fallback."""
         import httpx
@@ -407,7 +422,7 @@ class FlowEngine:
 
         try:
             return await self._call_agent_a2a_streaming(
-                agent_name, a2a_url, payload, task_id, flow_id,
+                agent_name, a2a_url, payload, task_id, flow_id, agent_model,
             )
         except Exception as e:
             if "ConnectError" in type(e).__name__:
@@ -431,6 +446,7 @@ class FlowEngine:
         payload: dict,
         task_id: str,
         flow_id: str,
+        agent_model: str = "",
     ) -> dict[str, Any]:
         """Consume SSE stream from agent's /tasks/sendSubscribe endpoint."""
         import httpx
@@ -467,6 +483,7 @@ class FlowEngine:
                                 await self.event_bus.emit("flow_agent_streaming_text", {
                                     "flow_id": flow_id,
                                     "agent": agent_name,
+                                    "model": agent_model,
                                     "text": data.get("text", ""),
                                     "author": data.get("author", ""),
                                     "is_thought": data.get("is_thought", False),
@@ -476,6 +493,7 @@ class FlowEngine:
                                 await self.event_bus.emit("flow_agent_thinking", {
                                     "flow_id": flow_id,
                                     "agent": agent_name,
+                                    "model": agent_model,
                                     "text": data.get("text", ""),
                                     "author": data.get("author", ""),
                                     "is_thought": data.get("is_thought", False),
@@ -487,6 +505,7 @@ class FlowEngine:
                                 await self.event_bus.emit("flow_agent_tool_use", {
                                     "flow_id": flow_id,
                                     "agent": agent_name,
+                                    "model": agent_model,
                                     "tool_name": _pending_tool_call,
                                     "tool_args": data.get("tool_args", {}),
                                     "author": data.get("author", ""),
@@ -500,6 +519,7 @@ class FlowEngine:
                                 await self.event_bus.emit("flow_agent_tool_result", {
                                     "flow_id": flow_id,
                                     "agent": agent_name,
+                                    "model": agent_model,
                                     "tool_name": tool_name,
                                     "tool_response": data.get("tool_response", ""),
                                     "author": data.get("author", ""),
@@ -571,33 +591,46 @@ class FlowEngine:
             logger.warning("[A2A] Failed to parse agent_questions JSON: %s", match.group()[:200])
         return None
 
-    def _scan_workspace(self, agent_name: str) -> list[dict[str, str]]:
+    async def _scan_workspace(self, agent_name: str) -> list[dict[str, str]]:
         """Scan the agent's workspace and return file paths + contents."""
-        from pathlib import Path
-
-        files: list[dict[str, str]] = []
         if not self.agent_registry:
-            return files
+            return []
 
         agent_info = self.agent_registry.get_agent(agent_name)
         if not agent_info or not agent_info.workspace_dir:
-            return files
+            return []
 
         workspace = agent_info.workspace_dir
         if not workspace.exists():
-            return files
+            return []
 
+        files = await asyncio.to_thread(self._scan_workspace_sync, workspace)
+        logger.info("[Workspace] %s: found %d files in %s", agent_name, len(files), workspace)
+        return files
+
+    @staticmethod
+    def _scan_workspace_sync(workspace: Path) -> list[dict[str, str]]:
+        """Blocking workspace scan — runs in a thread pool."""
+        _EXCLUDED_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv"}
+        _MAX_FILE_SIZE = 100_000  # 100 KB
+
+        files: list[dict[str, str]] = []
         for file_path in sorted(workspace.rglob("*")):
             if not file_path.is_file():
                 continue
-            rel_path = str(file_path.relative_to(workspace))
+            rel = file_path.relative_to(workspace)
+            if any(part in _EXCLUDED_DIRS for part in rel.parts):
+                continue
+            rel_path = str(rel)
             try:
+                size = file_path.stat().st_size
+                if size > _MAX_FILE_SIZE:
+                    files.append({"path": rel_path, "content": f"[file too large: {size} bytes]"})
+                    continue
                 content = file_path.read_text(encoding="utf-8")
                 files.append({"path": rel_path, "content": content})
             except (UnicodeDecodeError, OSError):
                 files.append({"path": rel_path, "content": "[binary file]"})
-
-        logger.info("[Workspace] %s: found %d files in %s", agent_name, len(files), workspace)
         return files
 
     async def _handle_llm_decision(

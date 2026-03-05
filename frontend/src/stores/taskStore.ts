@@ -35,7 +35,7 @@ interface TaskStore {
   pendingInteractions: TaskPendingInteraction[];
   submitTask: (description: string) => Promise<string>;
   addEvent: (taskId: string, event: TaskEvent) => void;
-  appendStreamingText: (taskId: string, text: string, agent: string, isThought: boolean) => void;
+  appendStreamingText: (taskId: string, text: string, agent: string, isThought: boolean, model?: string) => void;
   setActiveTask: (taskId: string | null) => void;
   updateTaskStatus: (taskId: string, status: string, error?: string) => void;
   addInteraction: (interaction: TaskPendingInteraction) => void;
@@ -82,7 +82,7 @@ export const useTaskStore = create<TaskStore>((set) => ({
       };
     }),
 
-  appendStreamingText: (taskId, text, agent, isThought) =>
+  appendStreamingText: (taskId, text, agent, isThought, model) =>
     set((state) => {
       const task = state.tasks[taskId];
       if (!task) return state;
@@ -98,7 +98,7 @@ export const useTaskStore = create<TaskStore>((set) => ({
         events.push({
           event_type: 'streaming_text',
           timestamp: new Date().toISOString(),
-          data: { agent, text, is_thought: isThought },
+          data: { agent, text, is_thought: isThought, model: model || '' },
         });
       }
       return {

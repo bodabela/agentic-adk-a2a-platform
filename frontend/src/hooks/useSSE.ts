@@ -46,6 +46,7 @@ export function useSSE() {
           data.text || '',
           data.agent || data.author || '',
           !!data.is_thought,
+          data.model || '',
         );
       } else {
         addTaskEvent(data.task_id, {
@@ -100,6 +101,7 @@ export function useSSE() {
             data.text || '',
             data.agent || data.author || '',
             !!data.is_thought,
+            data.model || '',
           );
           return;
         }

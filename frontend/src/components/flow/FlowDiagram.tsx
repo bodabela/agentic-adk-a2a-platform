@@ -242,11 +242,12 @@ function computeLayout(
 
 /* ── SVG node shape renderers ──────────────────────────── */
 
-function NodeShape({ node, state, pos, config, isActive, isHighlighted, toolUsage }: {
+function NodeShape({ node, state, pos, config, agentModels, isActive, isHighlighted, toolUsage }: {
   node: StateNode;
   state: string;
   pos: NodePos;
   config: FlowDefinitionData['config'];
+  agentModels?: Record<string, { model: string }>;
   isActive?: boolean;
   isHighlighted?: boolean;
   toolUsage?: Record<string, number>;
@@ -255,8 +256,10 @@ function NodeShape({ node, state, pos, config, isActive, isHighlighted, toolUsag
     ? '#ef4444'
     : TYPE_COLORS[node.type] || '#64748b';
   const label = TYPE_LABELS[node.type] || node.type;
-  const effectiveModel = node.model || config.model || '';
-  const effectiveProvider = node.provider || config.provider || '';
+  // For agent_task nodes, prefer the agent's own model from module.yaml
+  const agentModel = node.type === 'agent_task' && node.agent && agentModels?.[node.agent]?.model || '';
+  const effectiveModel = node.model || agentModel || (node.type !== 'agent_task' ? config.model || '' : '');
+  const effectiveProvider = node.provider || (node.type !== 'agent_task' ? config.provider || '' : '');
 
   const cx = pos.x + pos.w / 2;
   const cy = pos.y + pos.h / 2;
@@ -673,12 +676,13 @@ function EdgeLine({
 
 /* ── Main component ────────────────────────────────────── */
 
-export function FlowDiagram({ definition, activeState, previousState, flowStatus, toolUsageByState = {} }: {
+export function FlowDiagram({ definition, activeState, previousState, flowStatus, toolUsageByState = {}, agentModels = {} }: {
   definition: FlowDefinitionData;
   activeState?: string;
   previousState?: string;
   flowStatus?: string;
   toolUsageByState?: Record<string, Record<string, number>>;
+  agentModels?: Record<string, { model: string }>;
 }) {
   const { edges, positions, width, height } = useMemo(() => {
     const edges = extractEdges(definition.states);
@@ -786,6 +790,7 @@ export function FlowDiagram({ definition, activeState, previousState, flowStatus
               state={stateName}
               pos={pos}
               config={definition.config}
+              agentModels={agentModels}
               isActive={flowStatus === 'running' && stateName === activeState}
               isHighlighted={flowStatus !== 'running' && stateName === activeState}
               toolUsage={toolUsageByState[stateName]}

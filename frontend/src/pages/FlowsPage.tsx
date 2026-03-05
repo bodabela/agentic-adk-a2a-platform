@@ -53,12 +53,25 @@ export function FlowsPage() {
   const [flowDefinition, setFlowDefinition] = useState<FlowDefinitionData | null>(null);
   const [diagramLoading, setDiagramLoading] = useState(false);
 
-  // Fetch available flows on mount
+  // Agent model map: { agentName: { model, provider? } }
+  const [agentModels, setAgentModels] = useState<Record<string, { model: string }>>({});
+
+  // Fetch available flows + agent models on mount
   useEffect(() => {
     fetch('/api/flows/')
       .then((r) => r.json())
       .then((data: { flows: FlowInfo[] }) => {
         setAvailableFlows(data.flows);
+      })
+      .catch(() => {});
+    fetch('/api/agents/')
+      .then((r) => r.json())
+      .then((data: { agents: { name: string; model: string }[] }) => {
+        const map: Record<string, { model: string }> = {};
+        for (const a of data.agents) {
+          if (a.model) map[a.name] = { model: a.model };
+        }
+        setAgentModels(map);
       })
       .catch(() => {});
   }, []);
@@ -283,6 +296,9 @@ export function FlowsPage() {
             const evt = matchingFlow.events[matchingFlow.events.length - 1];
             const time = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
             const agent = (evt.data.agent as string) || (evt.data.author as string) || '';
+            const rawModel = (evt.data.model as string) || '';
+            const rawProvider = (evt.data.provider as string) || '';
+            const evtModel = rawProvider && rawModel ? `${rawProvider}/${rawModel}` : rawModel;
 
             let eventColor = '#60a5fa';
             let borderColor = '#1e293b';
@@ -318,20 +334,20 @@ export function FlowsPage() {
                 summary = `Agent "${d.agent}" completed${d.output_summary ? `\n${d.output_summary}` : ''}${fileLine}`; break;
               }
               case 'flow_agent_thinking':
-                summary = `${d.agent} ${d.is_thought ? 'thought' : 'thinking'}: ${d.text}`; break;
+                summary = `${d.is_thought ? 'thought' : 'thinking'}: ${d.text}`; break;
               case 'flow_agent_tool_use':
-                summary = `${d.agent} calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`; break;
+                summary = `calling tool: ${d.tool_name}(${JSON.stringify(d.tool_args || {})})`; break;
               case 'flow_agent_tool_result': {
                 const resp = typeof d.tool_response === 'string'
                   ? d.tool_response
                   : JSON.stringify(d.tool_response || '', null, 2);
-                const truncated = resp.length > 300 ? resp.slice(0, 300) + '...' : resp;
-                summary = `${d.agent} tool result [${d.tool_name}]: ${truncated}`; break;
+                const truncated = resp.length > 400 ? resp.slice(0, 400) + '...' : resp;
+                summary = `tool result [${d.tool_name}]: ${truncated}`; break;
               }
               case 'flow_agent_streaming_text':
                 summary = String(d.text || ''); break;
               case 'flow_llm_decision':
-                summary = `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''} [${d.provider}/${d.model}]`; break;
+                summary = `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''}`; break;
               case 'flow_input_required':
                 summary = `Waiting for user input: ${d.prompt || d.interaction_type}`; break;
               case 'flow_user_response':
@@ -369,6 +385,7 @@ export function FlowsPage() {
                   <span style={{ color: '#475569', fontSize: '1.05rem' }}>{time}</span>
                   <span style={{ color: eventColor, fontSize: '1.05rem' }}>{evt.event_type}</span>
                   {agent && <span style={{ color: '#a78bfa', fontSize: '1.05rem' }}>{agent}</span>}
+                  {evtModel && <span style={{ color: '#64748b', fontSize: '1.05rem' }}>[{evtModel}]</span>}
                 </div>
                 <div style={{ color: '#94a3b8', fontSize: '1.05rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                   {summary}
@@ -530,7 +547,7 @@ export function FlowsPage() {
               Loading flow diagram...
             </div>
           ) : flowDefinition ? (
-            <FlowDiagram definition={flowDefinition} activeState={activeState} previousState={previousState} flowStatus={matchingFlow?.status} toolUsageByState={toolUsageByState} />
+            <FlowDiagram definition={flowDefinition} activeState={activeState} previousState={previousState} flowStatus={matchingFlow?.status} toolUsageByState={toolUsageByState} agentModels={agentModels} />
           ) : (
             <div style={{
               color: '#475569',
