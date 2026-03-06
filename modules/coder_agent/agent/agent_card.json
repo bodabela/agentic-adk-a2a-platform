@@ -2,6 +2,7 @@
   "name": "coder_agent",
   "description": "Code generation, modification, and hotfix creation",
   "version": "0.1.0",
+  "protocolVersion": "0.3",
   "capabilities": {
     "streaming": true,
     "pushNotifications": false,
@@ -11,17 +12,29 @@
     {
       "id": "generate_code",
       "name": "Code Generation",
-      "description": "Generate source code from a system design or specification"
+      "description": "Generate source code from a system design or specification",
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["text/plain"],
+      "tags": ["code", "generation"],
+      "version": "1.0"
     },
     {
       "id": "modify_code",
       "name": "Code Modification",
-      "description": "Modify existing code based on requirements or bug reports"
+      "description": "Modify existing code based on requirements or bug reports",
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["text/plain"],
+      "tags": ["code", "modification"],
+      "version": "1.0"
     },
     {
       "id": "create_hotfix",
       "name": "Hotfix Creation",
-      "description": "Create targeted fixes based on diagnostic results"
+      "description": "Create targeted fixes based on diagnostic results",
+      "inputModes": ["text/plain", "application/json"],
+      "outputModes": ["text/plain"],
+      "tags": ["code", "hotfix"],
+      "version": "1.0"
     }
   ],
   "defaultInputModes": ["text/plain", "application/json"],

@@ -46,12 +46,14 @@ async def lifespan(app: FastAPI):
     app.state.cost_tracker = CostTracker(app.state.event_bus, llm_config=app.state.llm_config)
     app.state.agent_registry = AgentRegistry(settings.modules_dir)
     await app.state.agent_registry.discover_agents()
+    app.state.agent_registry.start_refresh_loop(interval_seconds=30)
 
     # Pre-warm MCP server dependencies into filesystem / bytecode cache
     await asyncio.to_thread(_prewarm_mcp_deps)
 
     yield
     # Shutdown
+    app.state.agent_registry.stop_refresh_loop()
     await app.state.event_bus.shutdown()
 
 

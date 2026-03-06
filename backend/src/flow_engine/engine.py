@@ -61,6 +61,21 @@ class FlowEngine:
         self.agent_registry = agent_registry
         self._pending_interactions: dict[str, asyncio.Future] = {}
 
+    async def validate_agent_requirements(self, flow: ParsedFlow) -> list[str]:
+        """Pre-flight check: return issues for agent_task nodes with unavailable agents.
+
+        Called before execute_flow() to catch missing agents early.
+        """
+        issues: list[str] = []
+        for state_name, node in flow.nodes.items():
+            if not isinstance(node, AgentTaskNode):
+                continue
+            resolved = await self._resolve_agent_for_task(node)
+            if resolved is None:
+                skill_info = f"skill='{node.required_skill}'" if node.required_skill else f"agent='{node.agent}'"
+                issues.append(f"State '{state_name}': no agent available for {skill_info}")
+        return issues
+
     async def execute_flow(
         self,
         flow: ParsedFlow,
@@ -80,6 +95,16 @@ class FlowEngine:
             started_at=datetime.now(),
         )
         await self.state_store.save(exec_state)
+
+        # Pre-flight: verify all agent_task nodes can be satisfied
+        preflight_issues = await self.validate_agent_requirements(flow)
+        if preflight_issues:
+            logger.warning("[Flow] Pre-flight validation issues: %s", preflight_issues)
+            await self.event_bus.emit(
+                "flow_validation_warning",
+                {"flow_id": flow_id, "issues": preflight_issues},
+            )
+
         await self.event_bus.emit(
             "flow_started", {
                 "flow_id": flow_id,
@@ -249,6 +274,48 @@ class FlowEngine:
                 return info.module_yaml.get("agent", {}).get("model", "")
         return ""
 
+    async def _resolve_agent_for_task(self, node: AgentTaskNode) -> str | None:
+        """Resolve which agent to call for a given AgentTaskNode.
+
+        Priority:
+          1. Explicit ``agent`` name — health-checked, falls back to ``fallback_agent``
+          2. ``required_skill`` + ``required_capabilities`` — registry lookup
+          3. None if nothing matched
+        """
+        registry = self.agent_registry
+
+        if node.agent:
+            info = registry.get_agent(node.agent) if registry else None
+            if info and info.is_live:
+                return node.agent
+            # Agent is known but offline — try a live health-check
+            if info and registry:
+                if await registry.health_check(node.agent):
+                    return node.agent
+            # Still offline — use fallback if defined
+            if node.fallback_agent:
+                logger.warning(
+                    "[Negotiation] Agent '%s' unavailable, switching to fallback '%s'",
+                    node.agent, node.fallback_agent,
+                )
+                return node.fallback_agent
+            # No fallback: return the original name and let the call fail naturally
+            return node.agent
+
+        if node.required_skill and registry:
+            best = registry.find_best_agent(
+                required_skill=node.required_skill,
+                required_capabilities=node.required_capabilities or None,
+            )
+            if best:
+                logger.info(
+                    "[Negotiation] Skill '%s' resolved to agent '%s' (live=%s)",
+                    node.required_skill, best.name, best.is_live,
+                )
+                return best.name
+
+        return None
+
     async def _handle_agent_task(
         self,
         node: AgentTaskNode,
@@ -261,22 +328,47 @@ class FlowEngine:
         if node.retry_loop:
             retry_mgr.check_and_increment(context, node.retry_loop)
 
+        resolved_agent = await self._resolve_agent_for_task(node)
+        if resolved_agent is None:
+            skill_info = f"skill='{node.required_skill}'" if node.required_skill else f"agent='{node.agent}'"
+            await self.event_bus.emit(
+                "flow_agent_unavailable",
+                {"flow_id": flow_id, "state": state_name, "agent": node.agent, "required_skill": node.required_skill},
+            )
+            raise RuntimeError(f"No agent available for {skill_info} in state '{state_name}'")
+
+        negotiation_mode = "explicit" if node.agent == resolved_agent else (
+            "fallback" if node.fallback_agent == resolved_agent else "skill_match"
+        )
+        if negotiation_mode != "explicit":
+            await self.event_bus.emit(
+                "flow_agent_negotiated",
+                {
+                    "flow_id": flow_id,
+                    "state": state_name,
+                    "requested_agent": node.agent,
+                    "resolved_agent": resolved_agent,
+                    "required_skill": node.required_skill,
+                    "negotiation": negotiation_mode,
+                },
+            )
+
         resolved_input = context.resolve_dict(node.input)
-        agent_model = self._resolve_agent_model(node.agent)
+        agent_model = self._resolve_agent_model(resolved_agent)
 
         await self.event_bus.emit(
             "flow_agent_task_started",
             {
                 "flow_id": flow_id,
                 "state": state_name,
-                "agent": node.agent,
+                "agent": resolved_agent,
                 "model": agent_model,
                 "input": resolved_input,
             },
         )
 
         # Invoke the agent via A2A JSON-RPC
-        output = await self._call_agent_a2a(node.agent, resolved_input, flow_id, agent_model)
+        output = await self._call_agent_a2a(resolved_agent, resolved_input, flow_id, agent_model)
 
         # Record cost from agent usage data (estimated tokens from A2A response)
         usage = output.pop("_usage", None)
@@ -284,8 +376,8 @@ class FlowEngine:
             try:
                 await self.cost_tracker.record_llm_call(
                     task_id=flow_id,
-                    module=node.agent,
-                    agent=node.agent,
+                    module=resolved_agent,
+                    agent=resolved_agent,
                     model=usage.get("model", "unknown"),
                     input_tokens=usage.get("input_tokens_est", 0),
                     output_tokens=usage.get("output_tokens_est", 0),
@@ -296,7 +388,7 @@ class FlowEngine:
                 logger.warning("[Cost] Failed to record agent cost: %s", cost_err)
 
         # Scan workspace for generated files and include contents
-        workspace_files = await self._scan_workspace(node.agent)
+        workspace_files = await self._scan_workspace(resolved_agent)
         if workspace_files:
             output["source_files"] = workspace_files
 
@@ -309,7 +401,7 @@ class FlowEngine:
             {
                 "flow_id": flow_id,
                 "state": state_name,
-                "agent": node.agent,
+                "agent": resolved_agent,
                 "model": agent_model,
                 "output_summary": str(output.get("result", ""))[:3000] if isinstance(output, dict) else str(output)[:3000],
                 "workspace_files": [f["path"] for f in workspace_files] if workspace_files else [],
@@ -391,10 +483,15 @@ class FlowEngine:
                 # Refresh live card if agent wasn't reachable at discovery time
                 if not agent_info.is_live:
                     await self.agent_registry.refresh_agent(agent_name)
+                # Version negotiation: warn but don't block (allows forward compat)
+                if not self.agent_registry.is_protocol_compatible(agent_name):
+                    logger.warning(
+                        "[A2A] Agent '%s' protocol version mismatch — proceeding anyway",
+                        agent_name,
+                    )
 
         if not a2a_url:
-            logger.warning("[A2A] Agent '%s' not found in registry", agent_name)
-            return {"result": f"Agent '{agent_name}' not found in registry", **task_input}
+            raise RuntimeError(f"Agent '{agent_name}' not found in registry")
 
         logger.info("[A2A] Calling %s at %s (streaming=always)", agent_name, a2a_url)
 
@@ -427,7 +524,7 @@ class FlowEngine:
         except Exception as e:
             if "ConnectError" in type(e).__name__:
                 logger.error("[A2A] %s not reachable at %s", agent_name, a2a_url)
-                return {"result": f"Agent '{agent_name}' is not reachable at {a2a_url}", **task_input}
+                raise RuntimeError(f"Agent '{agent_name}' is not reachable at {a2a_url}") from e
             logger.error("[A2A] %s streaming call failed, trying sync fallback: %s", agent_name, e)
             # Fall back to sync if streaming fails for any reason
             try:
@@ -437,7 +534,7 @@ class FlowEngine:
                 )
             except Exception as sync_e:
                 logger.error("[A2A] %s sync fallback also failed: %s", agent_name, sync_e)
-                return {"result": f"A2A call to '{agent_name}' failed: {e}", **task_input}
+                raise RuntimeError(f"A2A call to '{agent_name}' failed: {sync_e}") from sync_e
 
     async def _call_agent_a2a_streaming(
         self,

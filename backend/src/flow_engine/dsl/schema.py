@@ -55,7 +55,10 @@ class SideEffect(BaseModel):
 
 class AgentTaskNode(BaseModel):
     type: Literal["agent_task"] = "agent_task"
-    agent: str
+    agent: str | None = None             # explicit agent name (optional if required_skill is set)
+    required_skill: str | None = None    # skill_id for dynamic agent selection
+    required_capabilities: list[str] = Field(default_factory=list)  # additional capability filters
+    fallback_agent: str | None = None    # agent to use if primary is unavailable
     description: str = ""
     tools: list[str] = Field(default_factory=list)
     input: dict[str, str] = Field(default_factory=dict)
