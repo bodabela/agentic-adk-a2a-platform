@@ -1,0 +1,21 @@
+agent:
+  name: "coder_agent"
+  version: "0.1.0"
+  description: "Code generation and modification agent"
+  category: "development"
+  model: "gemini-2.5-flash"
+  model_fallback: "gemini-2.5-pro"
+  instruction: "prompts/system_prompt.md"
+  output_key: "coder_agent_output"
+  capabilities:
+    - "code_generation"
+    - "code_modification"
+    - "hotfix_creation"
+  generate_content_config:
+    thinking: true
+  tools:
+    mcp:
+      - transport: "stdio"
+        server: "../tools/mcp_server.py"
+        workspace: "{{ workspace_dir }}"
+    builtin: []

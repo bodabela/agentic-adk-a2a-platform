@@ -36,7 +36,8 @@ from src.flow_engine.state_store import (
 
 if TYPE_CHECKING:
     from src.llm.config import LLMProvidersConfig
-    from src.orchestrator.agent_registry import AgentRegistry
+    from src.agents.factory import AgentFactory
+    from src.agents.session_manager import SessionManager
 
 
 class FlowEngine:
@@ -50,7 +51,8 @@ class FlowEngine:
         llm_config: LLMProvidersConfig | None = None,
         runtime_provider: str | None = None,
         runtime_model: str | None = None,
-        agent_registry: AgentRegistry | None = None,
+        agent_factory: AgentFactory | None = None,
+        session_manager: SessionManager | None = None,
     ):
         self.event_bus = event_bus
         self.cost_tracker = cost_tracker
@@ -58,7 +60,8 @@ class FlowEngine:
         self.llm_config = llm_config
         self.runtime_provider = runtime_provider
         self.runtime_model = runtime_model
-        self.agent_registry = agent_registry
+        self.agent_factory = agent_factory
+        self.session_manager = session_manager
         self._pending_interactions: dict[str, asyncio.Future] = {}
 
     async def validate_agent_requirements(self, flow: ParsedFlow) -> list[str]:
@@ -265,54 +268,49 @@ class FlowEngine:
         return provider, model
 
     def _resolve_agent_model(self, agent_name: str) -> str:
-        """Resolve the effective model for an agent: runtime override or module.yaml."""
+        """Resolve the effective model for an agent: runtime override or definition."""
         if self.runtime_model:
             return self.runtime_model
-        if self.agent_registry:
-            info = self.agent_registry.get_agent(agent_name)
-            if info:
-                return info.module_yaml.get("agent", {}).get("model", "")
+        if self.agent_factory and self.agent_factory.has_agent(agent_name):
+            defn = self.agent_factory.definitions.get(agent_name)
+            if defn:
+                return defn.model
         return ""
 
     async def _resolve_agent_for_task(self, node: AgentTaskNode) -> str | None:
         """Resolve which agent to call for a given AgentTaskNode.
 
         Priority:
-          1. Explicit ``agent`` name — health-checked, falls back to ``fallback_agent``
-          2. ``required_skill`` + ``required_capabilities`` — registry lookup
+          1. Explicit ``agent`` name — check definition exists, fallback if missing
+          2. ``required_skill`` + ``required_capabilities`` — capability scan
           3. None if nothing matched
         """
-        registry = self.agent_registry
+        factory = self.agent_factory
 
         if node.agent:
-            info = registry.get_agent(node.agent) if registry else None
-            if info and info.is_live:
+            if factory and factory.has_agent(node.agent):
                 return node.agent
-            # Agent is known but offline — try a live health-check
-            if info and registry:
-                if await registry.health_check(node.agent):
-                    return node.agent
-            # Still offline — use fallback if defined
-            if node.fallback_agent:
+            # Agent definition missing — use fallback if defined
+            if node.fallback_agent and factory and factory.has_agent(node.fallback_agent):
                 logger.warning(
-                    "[Negotiation] Agent '%s' unavailable, switching to fallback '%s'",
+                    "[Negotiation] Agent '%s' not found, switching to fallback '%s'",
                     node.agent, node.fallback_agent,
                 )
                 return node.fallback_agent
-            # No fallback: return the original name and let the call fail naturally
+            # Return original name to let call fail with a clear error
             return node.agent
 
-        if node.required_skill and registry:
-            best = registry.find_best_agent(
-                required_skill=node.required_skill,
-                required_capabilities=node.required_capabilities or None,
-            )
-            if best:
-                logger.info(
-                    "[Negotiation] Skill '%s' resolved to agent '%s' (live=%s)",
-                    node.required_skill, best.name, best.is_live,
-                )
-                return best.name
+        if node.required_skill and factory:
+            # Scan definitions for matching capability
+            for name, defn in factory.definitions.items():
+                if node.required_skill in defn.capabilities:
+                    if node.required_capabilities:
+                        if all(c in defn.capabilities for c in node.required_capabilities):
+                            logger.info("[Negotiation] Skill '%s' resolved to '%s'", node.required_skill, name)
+                            return name
+                    else:
+                        logger.info("[Negotiation] Skill '%s' resolved to '%s'", node.required_skill, name)
+                        return name
 
         return None
 
@@ -367,28 +365,11 @@ class FlowEngine:
             },
         )
 
-        # Invoke the agent via A2A JSON-RPC
-        output = await self._call_agent_a2a(resolved_agent, resolved_input, flow_id, agent_model)
-
-        # Record cost from agent usage data (estimated tokens from A2A response)
-        usage = output.pop("_usage", None)
-        if usage:
-            try:
-                await self.cost_tracker.record_llm_call(
-                    task_id=flow_id,
-                    module=resolved_agent,
-                    agent=resolved_agent,
-                    model=usage.get("model", "unknown"),
-                    input_tokens=usage.get("input_tokens_est", 0),
-                    output_tokens=usage.get("output_tokens_est", 0),
-                    latency_ms=usage.get("latency_ms", 0),
-                    provider=usage.get("provider", "google"),
-                )
-            except Exception as cost_err:
-                logger.warning("[Cost] Failed to record agent cost: %s", cost_err)
+        # Invoke the agent in-process via ADK Runner
+        output = await self._call_agent_in_process(resolved_agent, resolved_input, flow_id, agent_model)
 
         # Scan workspace for generated files and include contents
-        workspace_files = await self._scan_workspace(resolved_agent)
+        workspace_files = await self._scan_workspace()
         if workspace_files:
             output["source_files"] = workspace_files
 
@@ -410,7 +391,7 @@ class FlowEngine:
 
         return node.on_complete
 
-    def _build_a2a_prompt(self, task_input: dict[str, Any]) -> str:
+    def _build_prompt(self, task_input: dict[str, Any]) -> str:
         """Build the prompt text from task input, formatting Q&A pairs if present."""
         prompt_parts = []
         q_text_map: dict[str, str] = {}
@@ -435,246 +416,198 @@ class FlowEngine:
                 prompt_parts.append(f"{k}: {v}")
         return "\n".join(prompt_parts) or str(task_input)
 
-    @staticmethod
-    def _parse_a2a_result(data: dict, task_id: str) -> dict[str, Any]:
-        """Parse JSON-RPC result dict into a standard output dict."""
-        result = data.get("result", {})
-        artifacts = result.get("artifacts", [])
-        texts = []
-        for artifact in artifacts:
-            for part in artifact.get("parts", []):
-                if part.get("type") == "text":
-                    texts.append(part["text"])
-
-        result_text = "\n".join(texts) if texts else str(result)
-        output: dict[str, Any] = {
-            "result": result_text,
-            "task_id": task_id,
-            "status": result.get("status", {}).get("state", "unknown"),
-        }
-
-        agent_questions = FlowEngine._extract_agent_questions(result_text)
-        if agent_questions:
-            output["agent_questions"] = agent_questions
-
-        # Extract usage data for cost tracking
-        usage = result.get("usage")
-        if usage:
-            output["_usage"] = usage
-
-        return output
-
-    async def _call_agent_a2a(
+    async def _call_agent_in_process(
         self,
         agent_name: str,
         task_input: dict[str, Any],
         flow_id: str,
         agent_model: str = "",
     ) -> dict[str, Any]:
-        """Call an agent via A2A, always using SSE streaming with sync fallback."""
-        import httpx
+        """Call an agent in-process using ADK Runner (replaces A2A HTTP calls)."""
+        import time
+        from google.adk.runners import Runner
+        from google.adk.agents.run_config import RunConfig, StreamingMode
+        from google.genai import types
 
-        # Resolve agent URL from registry
-        a2a_url: str | None = None
-        if self.agent_registry:
-            agent_info = self.agent_registry.get_agent(agent_name)
-            if agent_info:
-                a2a_url = agent_info.a2a_url
-                # Refresh live card if agent wasn't reachable at discovery time
-                if not agent_info.is_live:
-                    await self.agent_registry.refresh_agent(agent_name)
-                # Version negotiation: warn but don't block (allows forward compat)
-                if not self.agent_registry.is_protocol_compatible(agent_name):
-                    logger.warning(
-                        "[A2A] Agent '%s' protocol version mismatch — proceeding anyway",
-                        agent_name,
-                    )
+        if not self.agent_factory:
+            raise RuntimeError("AgentFactory not configured on FlowEngine")
 
-        if not a2a_url:
-            raise RuntimeError(f"Agent '{agent_name}' not found in registry")
+        agent = self.agent_factory.create_agent(
+            agent_name,
+            model_override=agent_model or self.runtime_model or None,
+            task_id=flow_id,
+            pending_interactions=self._pending_interactions,
+            event_bus=self.event_bus,
+            context_type="flow",
+        )
 
-        logger.info("[A2A] Calling %s at %s (streaming=always)", agent_name, a2a_url)
-
-        task_id = flow_id
-        prompt_text = self._build_a2a_prompt(task_input)
-        logger.info("[A2A] %s prompt:\n%s", agent_name, prompt_text[:500])
-
-        params: dict[str, Any] = {
-            "id": task_id,
-            "message": {
-                "role": "user",
-                "parts": [{"type": "text", "text": prompt_text}],
-            },
-        }
-        # Pass runtime model to the agent so it uses the UI-selected model
-        if self.runtime_model:
-            params["model"] = self.runtime_model
-
-        payload = {
-            "jsonrpc": "2.0",
-            "id": f"flow-{flow_id}",
-            "method": "tasks/sendSubscribe",
-            "params": params,
-        }
-
-        try:
-            return await self._call_agent_a2a_streaming(
-                agent_name, a2a_url, payload, task_id, flow_id, agent_model,
+        # Get or create session for this flow + agent combination
+        _user_id = "user"
+        _app_name = f"flow_{flow_id}"
+        if self.session_manager:
+            session_service, session_id = await self.session_manager.get_or_create(
+                f"{flow_id}_{agent_name}", app_name=_app_name, user_id=_user_id,
             )
-        except Exception as e:
-            if "ConnectError" in type(e).__name__:
-                logger.error("[A2A] %s not reachable at %s", agent_name, a2a_url)
-                raise RuntimeError(f"Agent '{agent_name}' is not reachable at {a2a_url}") from e
-            logger.error("[A2A] %s streaming call failed, trying sync fallback: %s", agent_name, e)
-            # Fall back to sync if streaming fails for any reason
-            try:
-                payload["method"] = "tasks/send"
-                return await self._call_agent_a2a_sync(
-                    agent_name, a2a_url, payload, task_id,
-                )
-            except Exception as sync_e:
-                logger.error("[A2A] %s sync fallback also failed: %s", agent_name, sync_e)
-                raise RuntimeError(f"A2A call to '{agent_name}' failed: {sync_e}") from sync_e
+        else:
+            from google.adk.sessions import InMemorySessionService
+            session_service = InMemorySessionService()
+            session = await session_service.create_session(
+                app_name=_app_name, user_id=_user_id,
+            )
+            session_id = session.id
 
-    async def _call_agent_a2a_streaming(
-        self,
-        agent_name: str,
-        a2a_url: str,
-        payload: dict,
-        task_id: str,
-        flow_id: str,
-        agent_model: str = "",
-    ) -> dict[str, Any]:
-        """Consume SSE stream from agent's /tasks/sendSubscribe endpoint."""
-        import httpx
+        runner = Runner(
+            agent=agent,
+            app_name=_app_name,
+            session_service=session_service,
+        )
 
-        stream_url = f"{a2a_url}/tasks/sendSubscribe"
-        logger.info("[A2A-SSE] Streaming from %s", stream_url)
+        prompt_text = self._build_prompt(task_input)
+        logger.info("[InProcess] %s prompt:\n%s", agent_name, prompt_text[:500])
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
-            async with client.stream("POST", stream_url, json=payload) as resp:
-                resp.raise_for_status()
+        user_message = types.Content(
+            role="user",
+            parts=[types.Part(text=prompt_text)],
+        )
 
-                event_type = ""
-                data_lines: list[str] = []
-                _pending_tool_call = ""
-                _tool_call_time = 0.0
+        default_provider = self.runtime_provider or "google"
+        last_event_time = time.monotonic()
+        response_parts: list[str] = []
+        _pending_tool_call = ""
+        _tool_call_time = 0.0
 
-                async for raw_line in resp.aiter_lines():
-                    line = raw_line.rstrip("\r\n") if isinstance(raw_line, str) else raw_line.decode().rstrip("\r\n")
+        async for event in runner.run_async(
+            user_id=_user_id,
+            session_id=session_id,
+            new_message=user_message,
+            run_config=RunConfig(streaming_mode=StreamingMode.SSE),
+        ):
+            author = getattr(event, "author", None) or ""
+            content = getattr(event, "content", None)
+            is_partial = getattr(event, "partial", False)
 
-                    if line.startswith("event:"):
-                        event_type = line[len("event:"):].strip()
-                    elif line.startswith("data:"):
-                        data_lines.append(line[len("data:"):].strip())
-                    elif line == "":
-                        # End of SSE event block
-                        if event_type and data_lines:
-                            data_str = "\n".join(data_lines)
-                            try:
-                                data = json.loads(data_str)
-                            except json.JSONDecodeError:
-                                data = {"raw": data_str}
+            # Record cost from usage_metadata on non-partial events
+            usage = getattr(event, "usage_metadata", None)
+            if usage and not is_partial:
+                now = time.monotonic()
+                latency = int((now - last_event_time) * 1000)
+                last_event_time = now
+                input_tokens = usage.prompt_token_count or 0
+                output_tokens = usage.candidates_token_count or 0
+                model_version = getattr(event, "model_version", None) or agent_model
+                try:
+                    await self.cost_tracker.record_llm_call(
+                        task_id=flow_id,
+                        module=agent_name,
+                        agent=author or agent_name,
+                        model=model_version,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        latency_ms=latency,
+                        provider=default_provider,
+                    )
+                except Exception as cost_err:
+                    logger.warning("[Cost] Failed to record agent cost: %s", cost_err)
 
-                            if event_type == "streaming_text":
-                                await self.event_bus.emit("flow_agent_streaming_text", {
-                                    "flow_id": flow_id,
-                                    "agent": agent_name,
-                                    "model": agent_model,
-                                    "text": data.get("text", ""),
-                                    "author": data.get("author", ""),
-                                    "is_thought": data.get("is_thought", False),
-                                })
-                                await asyncio.sleep(0)
-                            elif event_type == "thinking":
-                                await self.event_bus.emit("flow_agent_thinking", {
-                                    "flow_id": flow_id,
-                                    "agent": agent_name,
-                                    "model": agent_model,
-                                    "text": data.get("text", ""),
-                                    "author": data.get("author", ""),
-                                    "is_thought": data.get("is_thought", False),
-                                })
-                                await asyncio.sleep(0)
-                            elif event_type == "tool_call":
-                                _pending_tool_call = data.get("tool_name", "")
-                                _tool_call_time = asyncio.get_event_loop().time()
-                                await self.event_bus.emit("flow_agent_tool_use", {
-                                    "flow_id": flow_id,
-                                    "agent": agent_name,
-                                    "model": agent_model,
-                                    "tool_name": _pending_tool_call,
-                                    "tool_args": data.get("tool_args", {}),
-                                    "author": data.get("author", ""),
-                                })
-                                await asyncio.sleep(0)  # flush to frontend
-                            elif event_type == "tool_result":
-                                tool_name = data.get("tool_name", "") or _pending_tool_call
-                                tool_latency = int((asyncio.get_event_loop().time() - _tool_call_time) * 1000) if _tool_call_time else 0
-                                _pending_tool_call = ""
-                                _tool_call_time = 0.0
-                                await self.event_bus.emit("flow_agent_tool_result", {
-                                    "flow_id": flow_id,
-                                    "agent": agent_name,
-                                    "model": agent_model,
-                                    "tool_name": tool_name,
-                                    "tool_response": data.get("tool_response", ""),
-                                    "author": data.get("author", ""),
-                                })
-                                await asyncio.sleep(0)  # flush to frontend
-                                # Record tool invocation cost event
-                                try:
-                                    await self.cost_tracker.record_tool_invocation(
-                                        task_id=flow_id,
-                                        module=agent_name,
-                                        agent=data.get("author", "") or agent_name,
-                                        tool_id=tool_name,
-                                        tool_source="mcp",
-                                        latency_ms=tool_latency,
-                                    )
-                                except Exception:
-                                    pass
-                            elif event_type == "final":
-                                output = self._parse_a2a_result(data, task_id)
-                                logger.info("[A2A-SSE] %s final: %s", agent_name, str(output)[:500])
-                                return output
+            if not content or not getattr(content, "parts", None):
+                continue
 
-                        event_type = ""
-                        data_lines = []
+            # Partial text — stream token chunks
+            if is_partial:
+                for part in content.parts:
+                    if hasattr(part, "text") and part.text:
+                        if hasattr(part, "function_call") and part.function_call:
+                            continue
+                        is_thought = getattr(part, "thought", False)
+                        await self.event_bus.emit("flow_agent_streaming_text", {
+                            "flow_id": flow_id,
+                            "agent": agent_name,
+                            "model": agent_model,
+                            "text": part.text,
+                            "author": author,
+                            "is_thought": bool(is_thought),
+                        })
+                        await asyncio.sleep(0)
+                continue
 
-        logger.warning("[A2A-SSE] %s stream ended without final event", agent_name)
-        return {"result": f"Agent '{agent_name}' stream ended unexpectedly", "task_id": task_id, "status": "failed"}
+            for part in content.parts:
+                if hasattr(part, "text") and part.text:
+                    is_thought = getattr(part, "thought", False)
+                    if is_thought or not event.is_final_response():
+                        await self.event_bus.emit("flow_agent_thinking", {
+                            "flow_id": flow_id,
+                            "agent": agent_name,
+                            "model": agent_model,
+                            "text": part.text,
+                            "author": author,
+                            "is_thought": bool(is_thought),
+                        })
+                    else:
+                        response_parts.append(part.text)
+                    await asyncio.sleep(0)
+                elif hasattr(part, "function_call") and part.function_call:
+                    fc = part.function_call
+                    _pending_tool_call = fc.name
+                    _tool_call_time = asyncio.get_event_loop().time()
+                    await self.event_bus.emit("flow_agent_tool_use", {
+                        "flow_id": flow_id,
+                        "agent": agent_name,
+                        "model": agent_model,
+                        "tool_name": fc.name,
+                        "tool_args": dict(fc.args) if fc.args else {},
+                        "author": author,
+                    })
+                    await asyncio.sleep(0)
+                elif hasattr(part, "function_response") and part.function_response:
+                    fr = part.function_response
+                    tool_name = fr.name or _pending_tool_call
+                    tool_latency = int((asyncio.get_event_loop().time() - _tool_call_time) * 1000) if _tool_call_time else 0
+                    _pending_tool_call = ""
+                    _tool_call_time = 0.0
+                    resp_data = fr.response
+                    if hasattr(resp_data, "model_dump"):
+                        resp_data = resp_data.model_dump()
+                    elif not isinstance(resp_data, (dict, list, str, int, float, bool, type(None))):
+                        resp_data = str(resp_data)
+                    await self.event_bus.emit("flow_agent_tool_result", {
+                        "flow_id": flow_id,
+                        "agent": agent_name,
+                        "model": agent_model,
+                        "tool_name": tool_name,
+                        "tool_response": resp_data,
+                        "author": author,
+                    })
+                    await asyncio.sleep(0)
+                    try:
+                        await self.cost_tracker.record_tool_invocation(
+                            task_id=flow_id,
+                            module=agent_name,
+                            agent=author or agent_name,
+                            tool_id=tool_name,
+                            tool_source="mcp",
+                            latency_ms=tool_latency,
+                        )
+                    except Exception:
+                        pass
 
-    async def _call_agent_a2a_sync(
-        self,
-        agent_name: str,
-        a2a_url: str,
-        payload: dict,
-        task_id: str,
-    ) -> dict[str, Any]:
-        """Non-streaming POST to agent's / endpoint (fallback)."""
-        import httpx
+        result_text = "\n".join(response_parts)
+        output: dict[str, Any] = {
+            "result": result_text,
+            "task_id": flow_id,
+            "status": "completed",
+        }
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(a2a_url, json=payload)
-            logger.info("[A2A] %s response status=%s", agent_name, resp.status_code)
-            logger.debug("[A2A] %s raw response: %s", agent_name, resp.text[:2000])
-            resp.raise_for_status()
-            data = resp.json()
+        agent_questions = FlowEngine._extract_agent_questions(result_text)
+        if agent_questions:
+            output["agent_questions"] = agent_questions
 
-        output = self._parse_a2a_result(data, task_id)
-        logger.info("[A2A] %s output: %s", agent_name, str(output)[:500])
+        logger.info("[InProcess] %s completed: %s", agent_name, result_text[:500])
         return output
 
     @staticmethod
     def _extract_agent_questions(text: str) -> list[dict[str, Any]] | None:
-        """Extract structured questions from agent response text.
-
-        Looks for a JSON block containing {"agent_questions": [...]}.
-        """
+        """Extract structured questions from agent response text."""
         import re
-
-        # Find JSON block with agent_questions key
         pattern = r'\{[^{}]*"agent_questions"\s*:\s*\[.*?\]\s*\}'
         match = re.search(pattern, text, re.DOTALL)
         if not match:
@@ -685,24 +618,20 @@ class FlowEngine:
             if isinstance(questions, list) and len(questions) > 0:
                 return questions
         except json.JSONDecodeError:
-            logger.warning("[A2A] Failed to parse agent_questions JSON: %s", match.group()[:200])
+            logger.warning("Failed to parse agent_questions JSON: %s", match.group()[:200])
         return None
 
-    async def _scan_workspace(self, agent_name: str) -> list[dict[str, str]]:
-        """Scan the agent's workspace and return file paths + contents."""
-        if not self.agent_registry:
+    async def _scan_workspace(self) -> list[dict[str, str]]:
+        """Scan the shared workspace and return file paths + contents."""
+        if not self.agent_factory:
             return []
 
-        agent_info = self.agent_registry.get_agent(agent_name)
-        if not agent_info or not agent_info.workspace_dir:
-            return []
-
-        workspace = agent_info.workspace_dir
+        workspace = self.agent_factory._workspace_dir
         if not workspace.exists():
             return []
 
         files = await asyncio.to_thread(self._scan_workspace_sync, workspace)
-        logger.info("[Workspace] %s: found %d files in %s", agent_name, len(files), workspace)
+        logger.info("[Workspace] found %d files in %s", len(files), workspace)
         return files
 
     @staticmethod

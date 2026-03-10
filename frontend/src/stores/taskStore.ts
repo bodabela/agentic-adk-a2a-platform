@@ -33,7 +33,7 @@ interface TaskStore {
   tasks: Record<string, Task>;
   activeTaskId: string | null;
   pendingInteractions: TaskPendingInteraction[];
-  submitTask: (description: string) => Promise<string>;
+  submitTask: (description: string, rootAgentDefinition?: string) => Promise<string>;
   addEvent: (taskId: string, event: TaskEvent) => void;
   appendStreamingText: (taskId: string, text: string, agent: string, isThought: boolean, model?: string) => void;
   setActiveTask: (taskId: string | null) => void;
@@ -47,11 +47,13 @@ export const useTaskStore = create<TaskStore>((set) => ({
   activeTaskId: null,
   pendingInteractions: [],
 
-  submitTask: async (description: string) => {
+  submitTask: async (description: string, rootAgentDefinition?: string) => {
+    const body: Record<string, unknown> = { description };
+    if (rootAgentDefinition) body.root_agent_definition = rootAgentDefinition;
     const res = await fetch('/api/tasks/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     set((state) => ({

@@ -4,6 +4,8 @@ import { DashboardPage } from './pages/DashboardPage';
 import { TasksPage } from './pages/TasksPage';
 import { FlowsPage } from './pages/FlowsPage';
 import { CostsPage } from './pages/CostsPage';
+import { AgentsPage } from './pages/AgentsPage';
+import { RootAgentsPage } from './pages/RootAgentsPage';
 import { useSSE } from './hooks/useSSE';
 
 function AppContent() {
@@ -15,6 +17,8 @@ function AppContent() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/flows" element={<FlowsPage />} />
+        <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/root-agents" element={<RootAgentsPage />} />
         <Route path="/costs" element={<CostsPage />} />
       </Routes>
     </AppShell>

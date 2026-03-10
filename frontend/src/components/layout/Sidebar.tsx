@@ -4,6 +4,8 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: '~' },
   { path: '/tasks', label: 'Tasks', icon: '>' },
   { path: '/flows', label: 'Flows', icon: '#' },
+  { path: '/agents', label: 'Agents', icon: '@' },
+  { path: '/root-agents', label: 'Root Agents', icon: '*' },
   { path: '/costs', label: 'Costs', icon: '$' },
 ];
 

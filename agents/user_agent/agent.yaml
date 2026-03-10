@@ -1,0 +1,18 @@
+agent:
+  name: "user_agent"
+  version: "0.1.0"
+  description: "Handles direct human interaction - asks the user for clarification, preferences, or decisions"
+  category: "interaction"
+  model: "gemini-2.5-flash"
+  instruction: "prompts/system_prompt.md"
+  output_key: "user_agent_output"
+  capabilities:
+    - "user_interaction"
+    - "clarification"
+    - "confirmation"
+  generate_content_config:
+    thinking: false
+  tools:
+    mcp: []
+    builtin:
+      - "ask_user"

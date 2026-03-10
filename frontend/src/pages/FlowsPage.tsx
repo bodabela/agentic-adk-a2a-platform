@@ -32,6 +32,38 @@ const selectStyle: React.CSSProperties = {
   flex: 1,
 };
 
+const btnStyle: React.CSSProperties = {
+  padding: '0.5rem 1rem',
+  borderRadius: 6,
+  border: 'none',
+  cursor: 'pointer',
+  fontWeight: 600,
+  fontSize: '0.85rem',
+};
+const primaryBtn: React.CSSProperties = { ...btnStyle, background: '#38bdf8', color: '#0f172a' };
+const dangerBtn: React.CSSProperties = { ...btnStyle, background: '#ef4444', color: '#fff' };
+const secondaryBtn: React.CSSProperties = { ...btnStyle, background: '#334155', color: '#e2e8f0' };
+
+const yamlTextareaStyle: React.CSSProperties = {
+  width: '100%',
+  minHeight: 300,
+  fontFamily: 'monospace',
+  fontSize: '0.85rem',
+  background: '#0f172a',
+  color: '#e2e8f0',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  padding: '0.75rem',
+  resize: 'vertical',
+};
+
+const cardStyle: React.CSSProperties = {
+  background: '#1e293b',
+  border: '1px solid #334155',
+  borderRadius: 8,
+  padding: '1rem',
+};
+
 export function FlowsPage() {
   const [availableFlows, setAvailableFlows] = useState<FlowInfo[]>([]);
   const [flowFile, setFlowFile] = useState('');
@@ -43,6 +75,14 @@ export function FlowsPage() {
   const [freeTextValues, setFreeTextValues] = useState<Record<string, string>>({});
   const [multiAnswers, setMultiAnswers] = useState<Record<string, Record<string, string>>>({});
   const eventDetailRef = useRef<HTMLDivElement>(null);
+
+  // YAML editing state
+  const [editingFlow, setEditingFlow] = useState<string | null>(null);
+  const [editYaml, setEditYaml] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [newFlowName, setNewFlowName] = useState('');
+  const [newFlowYaml, setNewFlowYaml] = useState('');
+  const [yamlError, setYamlError] = useState('');
 
   // LLM provider/model state
   const [providersData, setProvidersData] = useState<Record<string, ProviderInfo>>({});
@@ -147,6 +187,78 @@ export function FlowsPage() {
     } else {
       setFlowDefinition(null);
     }
+  };
+
+  const refreshFlows = () => {
+    fetch('/api/flows/')
+      .then((r) => r.json())
+      .then((data: { flows: FlowInfo[] }) => setAvailableFlows(data.flows))
+      .catch(() => {});
+  };
+
+  const handleEditYaml = async (file: string) => {
+    setYamlError('');
+    try {
+      const res = await fetch(`/api/flows/raw/${encodeURIComponent(file)}`);
+      if (!res.ok) throw new Error('Failed to load flow YAML');
+      const data = await res.json();
+      setEditYaml(data.content);
+      setEditingFlow(file);
+    } catch (e: unknown) { setYamlError((e as Error).message); }
+  };
+
+  const handleSaveYaml = async () => {
+    if (!editingFlow) return;
+    setYamlError('');
+    try {
+      const res = await fetch(`/api/flows/${encodeURIComponent(editingFlow)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editYaml }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to save flow');
+      }
+      setEditingFlow(null);
+      refreshFlows();
+    } catch (e: unknown) { setYamlError((e as Error).message); }
+  };
+
+  const handleCreateFlow = async () => {
+    if (!newFlowName.trim() || !newFlowYaml.trim()) return;
+    setYamlError('');
+    try {
+      const filename = newFlowName.endsWith('.yaml') ? newFlowName : `${newFlowName}.yaml`;
+      const res = await fetch('/api/flows/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, content: newFlowYaml }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to create flow');
+      }
+      setShowCreate(false);
+      setNewFlowName('');
+      setNewFlowYaml('');
+      refreshFlows();
+    } catch (e: unknown) { setYamlError((e as Error).message); }
+  };
+
+  const handleDeleteFlow = async (file: string) => {
+    if (!confirm(`Delete flow "${file}"?`)) return;
+    setYamlError('');
+    try {
+      const res = await fetch(`/api/flows/${encodeURIComponent(file)}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to delete flow');
+      }
+      if (editingFlow === file) setEditingFlow(null);
+      if (flowFile === file) setFlowFile('');
+      refreshFlows();
+    } catch (e: unknown) { setYamlError((e as Error).message); }
   };
 
   // Find the active flow matching the selected flow to track current state + tool usage
@@ -562,6 +674,67 @@ export function FlowsPage() {
           )}
         </div>
       </div>
+
+      {/* Flow YAML Management */}
+      <section style={{ ...cardStyle, marginTop: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0, color: '#e2e8f0', fontSize: '1.1rem' }}>Flow Definitions</h2>
+          <button style={primaryBtn} onClick={() => { setShowCreate(true); setYamlError(''); }}>+ New Flow</button>
+        </div>
+
+        {yamlError && (
+          <div style={{ background: '#7f1d1d', color: '#fca5a5', padding: '0.75rem', borderRadius: 6, marginBottom: '0.75rem' }}>
+            {yamlError}
+          </div>
+        )}
+
+        {showCreate && (
+          <div style={{ ...cardStyle, marginBottom: '1rem', borderColor: '#38bdf8' }}>
+            <input
+              placeholder="Flow filename (e.g. my_flow.yaml)"
+              value={newFlowName}
+              onChange={(e) => setNewFlowName(e.target.value)}
+              style={{ ...yamlTextareaStyle, minHeight: 'auto', marginBottom: '0.75rem' }}
+            />
+            <textarea
+              value={newFlowYaml}
+              onChange={(e) => setNewFlowYaml(e.target.value)}
+              placeholder="Paste flow YAML content here..."
+              style={yamlTextareaStyle}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+              <button style={primaryBtn} onClick={handleCreateFlow}>Create</button>
+              <button style={secondaryBtn} onClick={() => { setShowCreate(false); setNewFlowName(''); setNewFlowYaml(''); }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.75rem' }}>
+          {availableFlows.map((flow) => (
+            <div key={flow.file} style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{flow.name}</div>
+              <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{flow.description || flow.file}</div>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+                <button style={secondaryBtn} onClick={() => handleEditYaml(flow.file)}>Edit YAML</button>
+                <button style={dangerBtn} onClick={() => handleDeleteFlow(flow.file)}>Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {editingFlow && (
+          <div style={{ ...cardStyle, marginTop: '1rem', borderColor: '#38bdf8' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h3 style={{ color: '#e2e8f0', margin: 0 }}>Edit: {editingFlow}</h3>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button style={primaryBtn} onClick={handleSaveYaml}>Save</button>
+                <button style={secondaryBtn} onClick={() => setEditingFlow(null)}>Cancel</button>
+              </div>
+            </div>
+            <textarea value={editYaml} onChange={(e) => setEditYaml(e.target.value)} style={yamlTextareaStyle} />
+          </div>
+        )}
+      </section>
 
       {/* Full-width section below */}
       <FlowStatus />

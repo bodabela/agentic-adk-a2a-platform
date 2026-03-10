@@ -22,6 +22,8 @@ _pending_interactions: dict[str, asyncio.Future] = {}
 class TaskSubmission(BaseModel):
     description: str
     context: dict | None = None
+    root_agent_definition: str | None = None    # which root-agent def to use
+    root_agent_instance_id: str | None = None   # or which running instance
 
 
 class TaskResponse(BaseModel):
@@ -90,36 +92,40 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
 
     try:
         from google.adk.runners import Runner
-        from google.adk.sessions import InMemorySessionService
         from google.genai import types
-        from src.orchestrator.root_agent import RootAgentFactory
 
-        registry = request.app.state.agent_registry
+        root_manager = request.app.state.root_agent_manager
+        session_manager = request.app.state.session_manager
         llm_config = request.app.state.llm_config
         default_model = llm_config.defaults.model
         logger.info("task_creating_agent", task_id=task_id, model=default_model)
 
-        settings = request.app.state.settings
-        factory = RootAgentFactory(
-            registry,
-            model=default_model,
-            modules_dir=settings.modules_dir,
-            workspace_dir=settings.workspace_dir,
-            event_bus=event_bus,
+        # Resolve which root-agent definition to use
+        def_name = submission.root_agent_definition
+        if not def_name:
+            # Pick first available definition
+            defs = root_manager.definitions
+            def_name = next(iter(defs)) if defs else None
+        if not def_name:
+            raise ValueError("No root-agent definitions available")
+
+        root_agent = root_manager.create_root_agent(
+            def_name,
+            model_override=default_model,
             task_id=task_id,
             pending_interactions=_pending_interactions,
+            event_bus=event_bus,
+            instance_id=submission.root_agent_instance_id,
         )
-        root_agent = factory.create_root_agent()
         logger.info("task_agent_created", task_id=task_id, agent=root_agent.name)
 
-        session_service = InMemorySessionService()
+        session_service, session_id = await session_manager.get_or_create(
+            task_id, app_name="agent_platform",
+        )
         runner = Runner(
             agent=root_agent,
             app_name="agent_platform",
             session_service=session_service,
-        )
-        session = await session_service.create_session(
-            app_name="agent_platform", user_id="user"
         )
 
         user_message = types.Content(
@@ -127,7 +133,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
             parts=[types.Part(text=submission.description)],
         )
 
-        logger.info("task_runner_start", task_id=task_id, session_id=session.id)
+        logger.info("task_runner_start", task_id=task_id, session_id=session_id)
 
         from google.adk.agents.run_config import RunConfig, StreamingMode
 
@@ -136,7 +142,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
         last_event_time = time.monotonic()
 
         async for event in runner.run_async(
-            user_id="user", session_id=session.id, new_message=user_message,
+            user_id="user", session_id=session_id, new_message=user_message,
             run_config=RunConfig(streaming_mode=StreamingMode.SSE),
         ):
             author = getattr(event, "author", None) or ""
@@ -166,7 +172,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                 except Exception as cost_err:
                     logger.warning("cost_tracking_failed", error=str(cost_err))
 
-            if not content or not hasattr(content, "parts"):
+            if not content or not getattr(content, "parts", None):
                 continue
 
             # Partial text — stream token chunks
@@ -270,3 +276,4 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
             future = _pending_interactions.pop(iid, None)
             if future and not future.done():
                 future.cancel()
+        # Note: session kept alive for potential multi-turn (not removed here)

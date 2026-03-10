@@ -1,17 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTaskStore } from '../../stores/taskStore';
+import { useRootAgentStore, type RootAgentDefinition } from '../../stores/rootAgentStore';
 
 export function TaskInput() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedRootAgent, setSelectedRootAgent] = useState('');
   const submitTask = useTaskStore((s) => s.submitTask);
+  const { definitions, fetchDefinitions } = useRootAgentStore();
+
+  useEffect(() => { fetchDefinitions(); }, [fetchDefinitions]);
+
+  useEffect(() => {
+    if (definitions.length > 0 && !selectedRootAgent) {
+      setSelectedRootAgent(definitions[0].name);
+    }
+  }, [definitions, selectedRootAgent]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
     setLoading(true);
     try {
-      await submitTask(input.trim());
+      await submitTask(input.trim(), selectedRootAgent || undefined);
       setInput('');
     } finally {
       setLoading(false);
@@ -20,6 +31,24 @@ export function TaskInput() {
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
+      <select
+        value={selectedRootAgent}
+        onChange={(e) => setSelectedRootAgent(e.target.value)}
+        style={{
+          padding: '0.625rem 0.75rem',
+          background: '#0f172a',
+          border: '1px solid #334155',
+          borderRadius: 6,
+          color: '#e2e8f0',
+          fontSize: '0.9rem',
+          outline: 'none',
+          minWidth: 160,
+        }}
+      >
+        {definitions.map((d: RootAgentDefinition) => (
+          <option key={d.name} value={d.name}>{d.name}</option>
+        ))}
+      </select>
       <input
         value={input}
         onChange={(e) => setInput(e.target.value)}

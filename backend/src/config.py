@@ -11,10 +11,14 @@ class Settings(BaseSettings):
     # LLM config (provider/model/pricing defined in YAML, API keys in .env)
     llm_config_path: str = "../config/llm_providers.yaml"
 
-    # Modules
+    # Modules (legacy — kept for backward compatibility during migration)
     modules_dir: str = "../modules"
     flows_dir: str = "../flows"
     workspace_dir: str = "../workspace"
+
+    # Declarative agent & root-agent definitions
+    agents_dir: str = "../agents"
+    root_agents_dir: str = "../root_agents"
 
     # Cost
     cost_tracking_enabled: bool = True

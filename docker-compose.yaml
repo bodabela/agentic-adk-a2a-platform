@@ -8,25 +8,15 @@ services:
     env_file:
       - .env
     environment:
-      - APP_MODULES_DIR=/modules
+      - APP_AGENTS_DIR=/agents
+      - APP_ROOT_AGENTS_DIR=/root_agents
       - APP_FLOWS_DIR=/flows
     volumes:
-      - ./modules:/modules:ro
+      - ./agents:/agents:ro
+      - ./root_agents:/root_agents:ro
       - ./flows:/flows:ro
       - ./config:/config:ro
-    depends_on:
-      - coder-agent
-    networks:
-      - agent-net
-
-  coder-agent:
-    build:
-      context: ./modules/coder_agent
-      dockerfile: Dockerfile
-    ports:
-      - "8001:8001"
-    env_file:
-      - .env
+      - ./workspace:/workspace
     networks:
       - agent-net
 

@@ -61,7 +61,13 @@
       "Read(//c/Python312/Lib/site-packages/**)",
       "Bash(xargs grep -l \"sub_agent\\\\|sub-agent\")",
       "WebFetch(domain:developers.googleblog.com)",
-      "Bash(cat backend/logs/*.log)"
+      "Bash(cat backend/logs/*.log)",
+      "Bash(python -c \"from mcp.server.fastmcp import FastMCP; print\\(''MCP import OK''\\)\")",
+      "Bash(python modules/coder_agent/tools/mcp_server.py --workspace workspace)",
+      "Bash(pip show mcp)",
+      "Bash(find /c/@projects/gen-ai-is-builder-2 -type d -name *task* -o -type d -name *flow* -o -type d -name *agent* -o -type d -name *orchestr*)",
+      "Bash(python -c \"from pathlib import Path; p = \\(Path\\(''agents''\\) / ''../tools/mcp_server.py''\\).resolve\\(\\); print\\(p\\); print\\(p.is_file\\(\\)\\)\")",
+      "Bash(python -c \"from pathlib import Path; p = \\(Path\\(''agents/coder_agent''\\) / ''../tools/mcp_server.py''\\).resolve\\(\\); print\\(p\\); print\\(p.is_file\\(\\)\\)\")"
     ]
   }
 }

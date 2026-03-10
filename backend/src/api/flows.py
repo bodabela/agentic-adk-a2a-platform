@@ -111,7 +111,8 @@ async def start_flow(req: FlowStartRequest, request: Request):
         llm_config=request.app.state.llm_config,
         runtime_provider=req.provider,
         runtime_model=req.model,
-        agent_registry=request.app.state.agent_registry,
+        agent_factory=request.app.state.agent_factory,
+        session_manager=request.app.state.session_manager,
     )
 
     _active_engines[flow.name] = engine
@@ -183,3 +184,92 @@ async def list_active_flows():
             for name in _active_engines
         ]
     }
+
+
+# ---------------------------------------------------------------------------
+# Flow CRUD
+# ---------------------------------------------------------------------------
+
+class FlowCreateRequest(BaseModel):
+    filename: str
+    content: str
+
+
+class FlowUpdateRequest(BaseModel):
+    content: str
+
+
+@router.get("/raw/{flow_file:path}")
+async def get_flow_raw(flow_file: str, request: Request):
+    """Return raw YAML content for editing."""
+    settings = request.app.state.settings
+    flow_path = Path(settings.flows_dir) / flow_file
+    if not flow_path.exists():
+        raise HTTPException(status_code=404, detail=f"Flow file not found: {flow_file}")
+    return {"file": flow_file, "content": flow_path.read_text(encoding="utf-8")}
+
+
+@router.post("/upload")
+async def upload_flow(req: FlowCreateRequest, request: Request):
+    """Create/upload a new flow definition."""
+    settings = request.app.state.settings
+    flows_dir = Path(settings.flows_dir)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+
+    flow_path = flows_dir / req.filename
+    if flow_path.exists():
+        raise HTTPException(status_code=409, detail=f"Flow '{req.filename}' already exists")
+
+    # Validate before saving
+    parser = FlowParser()
+    try:
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as tmp:
+            tmp.write(req.content)
+            tmp_path = tmp.name
+        try:
+            parser.parse_file(Path(tmp_path))
+        finally:
+            os.unlink(tmp_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid flow YAML: {e}")
+
+    flow_path.write_text(req.content, encoding="utf-8")
+    return {"status": "created", "file": req.filename}
+
+
+@router.put("/{flow_file:path}")
+async def update_flow(flow_file: str, req: FlowUpdateRequest, request: Request):
+    """Update a flow definition."""
+    settings = request.app.state.settings
+    flow_path = Path(settings.flows_dir) / flow_file
+    if not flow_path.exists():
+        raise HTTPException(status_code=404, detail=f"Flow file not found: {flow_file}")
+
+    # Validate before saving
+    parser = FlowParser()
+    try:
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as tmp:
+            tmp.write(req.content)
+            tmp_path = tmp.name
+        try:
+            parser.parse_file(Path(tmp_path))
+        finally:
+            os.unlink(tmp_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid flow YAML: {e}")
+
+    flow_path.write_text(req.content, encoding="utf-8")
+    return {"status": "updated", "file": flow_file}
+
+
+@router.delete("/{flow_file:path}")
+async def delete_flow(flow_file: str, request: Request):
+    """Delete a flow definition."""
+    settings = request.app.state.settings
+    flow_path = Path(settings.flows_dir) / flow_file
+    if not flow_path.exists():
+        raise HTTPException(status_code=404, detail=f"Flow file not found: {flow_file}")
+    flow_path.unlink()
+    return {"status": "deleted", "file": flow_file}
