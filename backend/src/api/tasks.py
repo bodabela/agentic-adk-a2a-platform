@@ -219,7 +219,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                     await asyncio.sleep(0)
                 elif hasattr(part, "function_call") and part.function_call:
                     fc = part.function_call
-                    await event_bus.emit("task_event", {
+                    tool_event: dict = {
                         "task_id": task_id,
                         "event_type": "tool_call",
                         "agent": author,
@@ -227,7 +227,67 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                         "model": default_model,
                         "tool_name": fc.name,
                         "tool_args": dict(fc.args) if fc.args else {},
-                    })
+                    }
+                    # Enrich transfer_to_ calls with full session context
+                    if fc.name and fc.name.startswith("transfer_to_"):
+                        try:
+                            sess = await session_service.get_session(
+                                app_name="agent_platform",
+                                user_id="user",
+                                session_id=session_id,
+                            )
+                            transfer_ctx: dict = {}
+                            if sess:
+                                # Session state (agent outputs, app state)
+                                if sess.state:
+                                    transfer_ctx["state"] = {
+                                        k: (v[:3000] if isinstance(v, str) and len(v) > 3000 else v)
+                                        for k, v in sess.state.items()
+                                    }
+                                # Conversation history (messages exchanged so far)
+                                if hasattr(sess, "events") and sess.events:
+                                    history = []
+                                    for ev in sess.events:
+                                        ev_content = getattr(ev, "content", None)
+                                        ev_author = getattr(ev, "author", None) or ""
+                                        if not ev_content or not getattr(ev_content, "parts", None):
+                                            continue
+                                        for p in ev_content.parts:
+                                            if hasattr(p, "text") and p.text:
+                                                text = p.text[:2000] if len(p.text) > 2000 else p.text
+                                                history.append({"author": ev_author, "text": text})
+                                            elif hasattr(p, "function_call") and p.function_call:
+                                                history.append({
+                                                    "author": ev_author,
+                                                    "tool_call": p.function_call.name,
+                                                    "args": dict(p.function_call.args) if p.function_call.args else {},
+                                                })
+                                            elif hasattr(p, "function_response") and p.function_response:
+                                                fr_resp = p.function_response.response
+                                                if hasattr(fr_resp, "model_dump"):
+                                                    fr_resp = fr_resp.model_dump()
+                                                elif not isinstance(fr_resp, (dict, list, str, int, float, bool, type(None))):
+                                                    fr_resp = str(fr_resp)
+                                                resp_str = str(fr_resp)
+                                                history.append({
+                                                    "author": ev_author,
+                                                    "tool_result": p.function_response.name,
+                                                    "response": resp_str[:1000] if len(resp_str) > 1000 else resp_str,
+                                                })
+                                    if history:
+                                        transfer_ctx["history"] = history
+                            logger.info(
+                                "transfer_context_lookup",
+                                tool=fc.name,
+                                has_session=bool(sess),
+                                state_keys=list((sess.state or {}).keys()) if sess else [],
+                                history_count=len(transfer_ctx.get("history", [])),
+                            )
+                            if transfer_ctx:
+                                tool_event["transfer_context"] = transfer_ctx
+                        except Exception as exc:
+                            logger.warning("transfer_context_error", error=str(exc), exc_info=True)
+                    await event_bus.emit("task_event", tool_event)
                     await asyncio.sleep(0)
                 elif hasattr(part, "function_response") and part.function_response:
                     fr = part.function_response

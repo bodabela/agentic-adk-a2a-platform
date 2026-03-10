@@ -549,14 +549,65 @@ class FlowEngine:
                     fc = part.function_call
                     _pending_tool_call = fc.name
                     _tool_call_time = asyncio.get_event_loop().time()
-                    await self.event_bus.emit("flow_agent_tool_use", {
+                    tool_evt: dict = {
                         "flow_id": flow_id,
                         "agent": agent_name,
                         "model": agent_model,
                         "tool_name": fc.name,
                         "tool_args": dict(fc.args) if fc.args else {},
                         "author": author,
-                    })
+                    }
+                    # Enrich transfer_to_ calls with full session context
+                    if fc.name and fc.name.startswith("transfer_to_"):
+                        try:
+                            sess = await session_service.get_session(
+                                app_name=_app_name,
+                                user_id=_user_id,
+                                session_id=session_id,
+                            )
+                            transfer_ctx: dict = {}
+                            if sess:
+                                if sess.state:
+                                    transfer_ctx["state"] = {
+                                        k: (v[:3000] if isinstance(v, str) and len(v) > 3000 else v)
+                                        for k, v in sess.state.items()
+                                    }
+                                if hasattr(sess, "events") and sess.events:
+                                    history = []
+                                    for ev in sess.events:
+                                        ev_content = getattr(ev, "content", None)
+                                        ev_author = getattr(ev, "author", None) or ""
+                                        if not ev_content or not getattr(ev_content, "parts", None):
+                                            continue
+                                        for p in ev_content.parts:
+                                            if hasattr(p, "text") and p.text:
+                                                text = p.text[:2000] if len(p.text) > 2000 else p.text
+                                                history.append({"author": ev_author, "text": text})
+                                            elif hasattr(p, "function_call") and p.function_call:
+                                                history.append({
+                                                    "author": ev_author,
+                                                    "tool_call": p.function_call.name,
+                                                    "args": dict(p.function_call.args) if p.function_call.args else {},
+                                                })
+                                            elif hasattr(p, "function_response") and p.function_response:
+                                                fr_resp = p.function_response.response
+                                                if hasattr(fr_resp, "model_dump"):
+                                                    fr_resp = fr_resp.model_dump()
+                                                elif not isinstance(fr_resp, (dict, list, str, int, float, bool, type(None))):
+                                                    fr_resp = str(fr_resp)
+                                                resp_str = str(fr_resp)
+                                                history.append({
+                                                    "author": ev_author,
+                                                    "tool_result": p.function_response.name,
+                                                    "response": resp_str[:1000] if len(resp_str) > 1000 else resp_str,
+                                                })
+                                    if history:
+                                        transfer_ctx["history"] = history
+                            if transfer_ctx:
+                                tool_evt["transfer_context"] = transfer_ctx
+                        except Exception:
+                            pass
+                    await self.event_bus.emit("flow_agent_tool_use", tool_evt)
                     await asyncio.sleep(0)
                 elif hasattr(part, "function_response") and part.function_response:
                     fr = part.function_response

@@ -67,7 +67,16 @@
       "Bash(pip show mcp)",
       "Bash(find /c/@projects/gen-ai-is-builder-2 -type d -name *task* -o -type d -name *flow* -o -type d -name *agent* -o -type d -name *orchestr*)",
       "Bash(python -c \"from pathlib import Path; p = \\(Path\\(''agents''\\) / ''../tools/mcp_server.py''\\).resolve\\(\\); print\\(p\\); print\\(p.is_file\\(\\)\\)\")",
-      "Bash(python -c \"from pathlib import Path; p = \\(Path\\(''agents/coder_agent''\\) / ''../tools/mcp_server.py''\\).resolve\\(\\); print\\(p\\); print\\(p.is_file\\(\\)\\)\")"
+      "Bash(python -c \"from pathlib import Path; p = \\(Path\\(''agents/coder_agent''\\) / ''../tools/mcp_server.py''\\).resolve\\(\\); print\\(p\\); print\\(p.is_file\\(\\)\\)\")",
+      "Bash(python -c \"import google.adk.agents; print\\(google.adk.agents.__file__\\)\")",
+      "Bash(xargs grep:*)",
+      "Bash(find C:Python312Libsite-packagesgoogleadk -name *.py -path *runner* -o -name runner.py)",
+      "Bash(find C:Python312Libsite-packagesgoogleadksessions -name *.py -type f)",
+      "Bash(find c:@projectsgen-ai-is-builder-2 -type f \\\\\\(-name *test*.py -o -name *example*.py \\\\\\))",
+      "Bash(python3 -c \"import sys; print\\(''''\\\\n''''.join\\(sys.path\\)\\)\")",
+      "Bash(python3 -m pip show google-cloud-adk)",
+      "Bash(python3 -m pip show google-adk)",
+      "Bash(python -c \"import google.adk; print\\(google.adk.__file__\\)\")"
     ]
   }
 }

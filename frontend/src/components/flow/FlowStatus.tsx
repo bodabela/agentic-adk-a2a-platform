@@ -1,6 +1,113 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFlowStore, type FlowEvent, type InteractionQuestion } from '../../stores/flowStore';
 
+/** Format a single history entry for display. */
+function formatHistoryEntry(entry: Record<string, unknown>): { label: string; color: string; text: string } {
+  if (entry.tool_call) {
+    return { label: `${entry.author || '?'} -> ${entry.tool_call}`, color: '#fbbf24', text: JSON.stringify(entry.args || {}, null, 2) };
+  }
+  if (entry.tool_result) {
+    return { label: `${entry.tool_result} result`, color: '#34d399', text: String(entry.response || '') };
+  }
+  return { label: String(entry.author || 'message'), color: entry.author === 'user' ? '#60a5fa' : '#e2e8f0', text: String(entry.text || '') };
+}
+
+/** Centered modal popup for transfer_to_agent context data. */
+function TransferContextPopup({ context }: { context: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false);
+  const state = context.state as Record<string, unknown> | undefined;
+  const history = context.history as Record<string, unknown>[] | undefined;
+
+  return (
+    <>
+      <span
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        style={{
+          fontSize: '0.95rem',
+          padding: '0.15rem 0.5rem',
+          borderRadius: 4,
+          background: '#1e3a5f',
+          color: '#60a5fa',
+          marginLeft: '0.5rem',
+          cursor: 'pointer',
+          fontWeight: 600,
+        }}
+      >
+        context
+      </span>
+
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#0f172a',
+              border: '1px solid #475569',
+              borderRadius: 10,
+              padding: '1.5rem',
+              width: '70vw',
+              maxWidth: 800,
+              maxHeight: '75vh',
+              overflowY: 'auto',
+              boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+              color: '#e2e8f0',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <span style={{ fontSize: '1.25rem', fontWeight: 700, color: '#60a5fa' }}>Transfer Context</span>
+              <button
+                onClick={() => setOpen(false)}
+                style={{ background: 'none', border: '1px solid #475569', borderRadius: 6, color: '#94a3b8', fontSize: '1.1rem', padding: '0.25rem 0.75rem', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+            {state && Object.keys(state).length > 0 && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.5rem', borderBottom: '1px solid #334155', paddingBottom: '0.35rem' }}>Session State</div>
+                {Object.entries(state).map(([key, val]) => (
+                  <div key={key} style={{ marginBottom: '0.6rem', fontSize: '1.05rem', lineHeight: 1.5 }}>
+                    <span style={{ color: '#a78bfa', fontWeight: 700 }}>{key}: </span>
+                    <span style={{ color: '#cbd5e1', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{typeof val === 'string' ? val : JSON.stringify(val, null, 2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {history && history.length > 0 && (
+              <div>
+                <div style={{ color: '#22d3ee', fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.5rem', borderBottom: '1px solid #334155', paddingBottom: '0.35rem' }}>Conversation History ({history.length} events)</div>
+                {history.map((entry, i) => {
+                  const { label, color, text } = formatHistoryEntry(entry);
+                  return (
+                    <div key={i} style={{ marginBottom: '0.5rem', paddingLeft: '0.75rem', borderLeft: `3px solid ${color}` }}>
+                      <div style={{ color, fontWeight: 700, fontSize: '1rem' }}>{label}</div>
+                      {text && <div style={{ color: '#cbd5e1', fontSize: '1rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{text.length > 2000 ? text.slice(0, 2000) + '...' : text}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {(!state || Object.keys(state).length === 0) && (!history || history.length === 0) && (
+              <div style={{ color: '#64748b', fontSize: '1.1rem' }}>No context available (first transfer)</div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** Format millisecond delta as human-readable elapsed time. */
 function formatDelta(ms: number): string {
   if (ms < 1000) return `+${ms}ms`;
@@ -258,12 +365,15 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
               fontFamily: 'monospace',
             }}
           >
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: summary ? '0.25rem' : 0 }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: summary ? '0.25rem' : 0, alignItems: 'center' }}>
               <span style={{ color: '#475569' }}>{time}</span>
               {delta > 0 && <span style={{ color: '#f59e0b' }}>{formatDelta(delta)}</span>}
               <span style={{ color: eventColor }}>{evt.event_type}</span>
               {agent && <span style={{ color: '#a78bfa' }}>{agent}</span>}
               {model && <span style={{ color: '#64748b' }}>[{model}]</span>}
+              {evt.data.transfer_context && typeof evt.data.transfer_context === 'object' && (
+                <TransferContextPopup context={evt.data.transfer_context as Record<string, unknown>} />
+              )}
             </div>
             {summary && (
               <div style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
