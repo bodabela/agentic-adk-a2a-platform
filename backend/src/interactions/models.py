@@ -22,6 +22,7 @@ class InteractionType(str, Enum):
     choice = "choice"
     confirmation = "confirmation"
     form = "form"
+    multi_question = "multi_question"
 
 
 class Interaction(BaseModel):

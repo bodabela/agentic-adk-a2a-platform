@@ -42,6 +42,12 @@ async def submit_interaction_response(body: InteractionResponseBody, request: Re
             future.set_result(body.response)
             return {"status": "ok", "interaction_id": body.interaction_id, "via": "legacy_task"}
 
+        # Fallback: try active flow engines (legacy flow path without broker)
+        from src.api.flows import _active_engines
+        for engine in _active_engines.values():
+            if await engine.submit_interaction_response(body.interaction_id, body.response):
+                return {"status": "ok", "interaction_id": body.interaction_id, "via": "legacy_flow"}
+
         raise HTTPException(
             status_code=404,
             detail=f"No pending interaction found: {body.interaction_id}",

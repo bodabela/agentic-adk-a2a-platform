@@ -492,7 +492,10 @@ export function FlowsPage() {
               case 'flow_llm_decision':
                 summary = `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''}`; break;
               case 'flow_input_required':
-                summary = `Waiting for user input: ${d.prompt || d.interaction_type}`; break;
+                summary = d.external
+                  ? `Question sent to ${d.channel}: ${d.prompt || d.interaction_type}`
+                  : `Waiting for user input: ${d.prompt || d.interaction_type}`;
+                break;
               case 'flow_user_response':
                 summary = `User responded: ${d.response}`; break;
               case 'flow_completed': {

@@ -87,7 +87,11 @@
       "Bash(curl -s http://localhost:3000/api/interactions/pending)",
       "Bash(curl -s http://localhost:8000/api/interactions/pending)",
       "Bash(python -c \"from google.adk.tools.mcp_tool import SseConnectionParams; help\\(SseConnectionParams\\)\")",
-      "Bash(python -c \"from google.adk.tools.mcp_tool import StreamableHTTPConnectionParams; help\\(StreamableHTTPConnectionParams\\)\")"
+      "Bash(python -c \"from google.adk.tools.mcp_tool import StreamableHTTPConnectionParams; help\\(StreamableHTTPConnectionParams\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/flow_engine/engine.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/api/interactions.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/interactions/channels/whatsapp.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/flow_engine/engine.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/interactions/channels/whatsapp.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/interactions/channels/whatsapp.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/flow_engine/engine.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/interactions/models.py''\\).read\\(\\)\\); print\\(''Backend OK''\\)\")"
     ],
     "additionalDirectories": [
       "c:\\@projects\\gen-ai-is-builder-2\\backend\\src\\interactions"

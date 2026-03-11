@@ -852,26 +852,14 @@ class FlowEngine:
         flow_id: str,
     ) -> str:
         """Pause the flow and wait for user input."""
-        interaction_id = str(uuid.uuid4())
         resolved_prompt = context.resolve(node.prompt) if node.prompt else ""
 
-        # Build event payload
-        event_payload: dict[str, Any] = {
-            "flow_id": flow_id,
-            "state": state_name,
-            "interaction_id": interaction_id,
-            "interaction_type": node.interaction_type,
-            "prompt": str(resolved_prompt),
-            "options": node.options,
-        }
-
-        # For multi_question: resolve questions (may be a template string or a list)
+        # Resolve multi_question questions
+        resolved_questions: list[dict[str, Any]] | None = None
         if node.interaction_type == "multi_question":
             raw_questions = node.questions
-            # If it's a template string, resolve it first to get the list
             if isinstance(raw_questions, str):
                 raw_questions = context.resolve(raw_questions)
-            # Fallback: pull agent_questions from generate_code output
             if not raw_questions or raw_questions == "":
                 gen_output = context.states.get("generate_code", {}).get("output", {})
                 if isinstance(gen_output, dict):
@@ -882,27 +870,97 @@ class FlowEngine:
                     q_dict = q.model_dump() if hasattr(q, "model_dump") else dict(q)
                     q_dict["text"] = str(context.resolve(q_dict.get("text", "")))
                     resolved_questions.append(q_dict)
-                event_payload["questions"] = resolved_questions
-
-        await self.event_bus.emit("flow_input_required", event_payload)
-
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
-        self._pending_interactions[interaction_id] = future
 
         timeout = node.timeout_seconds
-        try:
-            response = await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError:
-            if node.on_timeout:
-                return node.on_timeout
-            raise
-        finally:
-            self._pending_interactions.pop(interaction_id, None)
+
+        # --- Broker path: channel-aware dispatch (WhatsApp, Teams, etc.) ---
+        if self._interaction_broker:
+            logger.info(
+                "[Flow] Human interaction via broker, channel=%s, type=%s, questions=%s",
+                self._channel, node.interaction_type,
+                len(resolved_questions) if resolved_questions else 0,
+            )
+            try:
+                interaction_id = await self._interaction_broker.create_interaction(
+                    context_id=flow_id,
+                    context_type="flow",
+                    interaction_type=node.interaction_type,
+                    prompt=str(resolved_prompt),
+                    options=node.options,
+                    questions=resolved_questions,
+                    channel=self._channel,
+                    metadata={"state": state_name},
+                )
+                logger.info(
+                    "[Flow] Broker interaction created: id=%s, channel=%s",
+                    interaction_id, self._channel,
+                )
+            except Exception as e:
+                logger.error("[Flow] Broker create_interaction FAILED: %s", e, exc_info=True)
+                raise
+
+            # For non-web_ui channels: emit a lightweight status event
+            # so the web UI shows that the question was sent externally,
+            # but NOT the full flow_input_required (which would show the form).
+            if self._channel != "web_ui":
+                await self.event_bus.emit("flow_input_required", {
+                    "flow_id": flow_id,
+                    "state": state_name,
+                    "interaction_id": interaction_id,
+                    "interaction_type": node.interaction_type,
+                    "prompt": str(resolved_prompt),
+                    "options": node.options,
+                    "channel": self._channel,
+                    "external": True,
+                })
+                logger.info("[Flow] Interaction dispatched to %s (external)", self._channel)
+
+            try:
+                response_str = await self._interaction_broker.wait_for_response(
+                    interaction_id, timeout=timeout,
+                )
+                logger.info("[Flow] Broker response received: %s", str(response_str)[:200])
+                # Parse JSON back for structured responses (multi_question)
+                try:
+                    response = json.loads(response_str)
+                except (json.JSONDecodeError, TypeError):
+                    response = response_str
+            except asyncio.TimeoutError:
+                if node.on_timeout:
+                    return node.on_timeout
+                raise
+
+        # --- Legacy path: direct event bus emit (web UI only) ---
+        else:
+            interaction_id = str(uuid.uuid4())
+            event_payload: dict[str, Any] = {
+                "flow_id": flow_id,
+                "state": state_name,
+                "interaction_id": interaction_id,
+                "interaction_type": node.interaction_type,
+                "prompt": str(resolved_prompt),
+                "options": node.options,
+            }
+            if resolved_questions:
+                event_payload["questions"] = resolved_questions
+
+            await self.event_bus.emit("flow_input_required", event_payload)
+
+            future: asyncio.Future = asyncio.get_event_loop().create_future()
+            self._pending_interactions[interaction_id] = future
+
+            try:
+                response = await asyncio.wait_for(future, timeout=timeout)
+            except asyncio.TimeoutError:
+                if node.on_timeout:
+                    return node.on_timeout
+                raise
+            finally:
+                self._pending_interactions.pop(interaction_id, None)
 
         state_output: dict[str, Any] = {"response": response}
-        # Preserve resolved questions so downstream can map answers to question texts
-        if "questions" in event_payload:
-            state_output["questions"] = event_payload["questions"]
+        if resolved_questions:
+            state_output["questions"] = resolved_questions
         context.set_state_output(state_name, state_output)
 
         await self.event_bus.emit(
@@ -922,6 +980,15 @@ class FlowEngine:
         self, interaction_id: str, response: Any
     ) -> bool:
         """Called by the API when a user submits a response."""
+        # Broker path: delegate to broker (notifies wait_for_response)
+        if self._interaction_broker:
+            return await self._interaction_broker.submit_response(
+                interaction_id=interaction_id,
+                response=response,
+                responder="flow_api",
+            )
+
+        # Legacy path: resolve the asyncio.Future directly
         future = self._pending_interactions.get(interaction_id)
         if future and not future.done():
             future.set_result(response)

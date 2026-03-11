@@ -145,14 +145,17 @@ export function useSSE() {
             updateFlowState(flowId, { currentState: data.state });
             break;
           case 'flow_input_required':
-            addInteraction({
-              interaction_id: data.interaction_id,
-              flow_id: flowId,
-              interaction_type: data.interaction_type,
-              prompt: data.prompt,
-              options: data.options,
-              questions: data.questions,
-            });
+            // If external (sent to WhatsApp/Teams), don't show the form
+            if (!data.external) {
+              addInteraction({
+                interaction_id: data.interaction_id,
+                flow_id: flowId,
+                interaction_type: data.interaction_type,
+                prompt: data.prompt,
+                options: data.options,
+                questions: data.questions,
+              });
+            }
             break;
           case 'flow_completed':
             updateFlowState(flowId, { status: 'completed', output: data.output });

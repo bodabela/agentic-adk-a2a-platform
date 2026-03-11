@@ -188,7 +188,9 @@ function eventSummary(evt: FlowEvent): string {
     case 'flow_llm_decision':
       return `LLM decision: ${d.decision}${d.reason ? ` — ${d.reason}` : ''}`;
     case 'flow_input_required':
-      return `Waiting for user input: ${d.prompt || d.interaction_type}`;
+      return d.external
+        ? `Question sent to ${d.channel}: ${d.prompt || d.interaction_type}`
+        : `Waiting for user input: ${d.prompt || d.interaction_type}`;
     case 'flow_user_response':
       return `User responded: ${d.response}`;
     case 'flow_completed': {
