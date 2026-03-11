@@ -82,7 +82,12 @@
       "Bash(python -c \"from src.main import app; print\\(''Main app OK''\\)\")",
       "Read(//dev/**)",
       "Bash(tail -50 *.log)",
-      "Bash(curl -s http://localhost:8000/api/interactions/pending?channel=whatsapp)"
+      "Bash(curl -s http://localhost:8000/api/interactions/pending?channel=whatsapp)",
+      "Bash(python -c \"from src.agents.factory import AgentFactory; print\\(''OK''\\)\")",
+      "Bash(curl -s http://localhost:3000/api/interactions/pending)",
+      "Bash(curl -s http://localhost:8000/api/interactions/pending)",
+      "Bash(python -c \"from google.adk.tools.mcp_tool import SseConnectionParams; help\\(SseConnectionParams\\)\")",
+      "Bash(python -c \"from google.adk.tools.mcp_tool import StreamableHTTPConnectionParams; help\\(StreamableHTTPConnectionParams\\)\")"
     ],
     "additionalDirectories": [
       "c:\\@projects\\gen-ai-is-builder-2\\backend\\src\\interactions"

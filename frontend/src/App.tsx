@@ -6,6 +6,7 @@ import { FlowsPage } from './pages/FlowsPage';
 import { CostsPage } from './pages/CostsPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { RootAgentsPage } from './pages/RootAgentsPage';
+import { ToolsPage } from './pages/ToolsPage';
 import { useSSE } from './hooks/useSSE';
 
 function AppContent() {
@@ -19,6 +20,7 @@ function AppContent() {
         <Route path="/flows" element={<FlowsPage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/root-agents" element={<RootAgentsPage />} />
+        <Route path="/tools" element={<ToolsPage />} />
         <Route path="/costs" element={<CostsPage />} />
       </Routes>
     </AppShell>

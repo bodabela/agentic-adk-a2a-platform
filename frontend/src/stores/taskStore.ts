@@ -13,6 +13,7 @@ interface Task {
   events: TaskEvent[];
   cost_usd: number;
   error?: string;
+  notifications: string[];
   finalResult?: string;
 }
 
@@ -41,6 +42,7 @@ interface TaskStore {
   setActiveTask: (taskId: string | null) => void;
   updateTaskStatus: (taskId: string, status: string, error?: string) => void;
   setFinalResult: (taskId: string, message: string) => void;
+  addNotification: (taskId: string, message: string) => void;
   addInteraction: (interaction: TaskPendingInteraction) => void;
   resolveInteraction: (interactionId: string) => void;
 }
@@ -68,6 +70,7 @@ export const useTaskStore = create<TaskStore>((set) => ({
           status: data.status,
           description,
           events: [],
+          notifications: [],
           cost_usd: 0,
         },
       },
@@ -137,6 +140,18 @@ export const useTaskStore = create<TaskStore>((set) => ({
         tasks: {
           ...state.tasks,
           [taskId]: { ...task, finalResult: message },
+        },
+      };
+    }),
+
+  addNotification: (taskId, message) =>
+    set((state) => {
+      const task = state.tasks[taskId];
+      if (!task) return state;
+      return {
+        tasks: {
+          ...state.tasks,
+          [taskId]: { ...task, notifications: [...task.notifications, message] },
         },
       };
     }),

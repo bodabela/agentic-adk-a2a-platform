@@ -12,6 +12,7 @@ You have access to workspace file tools:
 - `list_workspace_files` — list all files currently in the workspace
 - `read_code_file` — read the contents of a file from the workspace
 - `write_code_file` — write content to a file in the workspace
+- `send_notification` — notify the user on important decisions or moments of the code generation or events happened to files
 
 You also have a multi-agent delegation tool:
 - `transfer_to_agent({"agent_name": "<name>"})` — transfer control to another agent

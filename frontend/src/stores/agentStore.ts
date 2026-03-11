@@ -8,8 +8,21 @@ export interface AgentDefinition {
   model: string;
   model_fallback: string | null;
   capabilities: string[];
+  // Flat tool name list from the list API (MCP + builtin names)
+  tools: string[];
+}
+
+// Full definition from the detail endpoint (mirrors the Pydantic model)
+export interface AgentDetailDefinition {
+  name: string;
+  version: string;
+  description: string;
+  category: string;
+  model: string;
+  model_fallback: string | null;
+  capabilities: string[];
   tools: {
-    mcp: Array<{ transport: string; server?: string; workspace?: string }>;
+    mcp: Array<{ transport: string; server?: string; url?: string; command?: string; workspace?: string }>;
     builtin: string[];
   };
 }
@@ -18,7 +31,7 @@ export interface AgentDetail {
   name: string;
   yaml_content: string;
   prompt_content: string;
-  definition: AgentDefinition | null;
+  definition: AgentDetailDefinition | null;
 }
 
 interface AgentStore {

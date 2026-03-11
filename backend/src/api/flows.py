@@ -22,6 +22,7 @@ class FlowStartRequest(BaseModel):
     input: dict[str, Any] = {}
     provider: str | None = None
     model: str | None = None
+    channel: str | None = None
 
 
 class FlowStartResponse(BaseModel):
@@ -114,6 +115,7 @@ async def start_flow(req: FlowStartRequest, request: Request):
         agent_factory=request.app.state.agent_factory,
         session_manager=request.app.state.session_manager,
         interaction_broker=getattr(request.app.state, "interaction_broker", None),
+        channel=req.channel or "web_ui",
     )
 
     _active_engines[flow.name] = engine

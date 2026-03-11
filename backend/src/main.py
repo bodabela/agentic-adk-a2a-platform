@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from src.config import Settings
-from src.api import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api
+from src.api import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api
 from src.events.bus import EventBus
 from src.cost.tracker import CostTracker
 from src.llm.config import load_llm_config
@@ -137,3 +137,4 @@ app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(root_agents.router, prefix="/api/root-agents", tags=["root-agents"])
 app.include_router(interactions_api.router, prefix="/api/interactions", tags=["interactions"])
 app.include_router(interactions_api._whatsapp_router, prefix="/api", tags=["channels-whatsapp"])
+app.include_router(tools_api.router, prefix="/api/tools", tags=["tools"])

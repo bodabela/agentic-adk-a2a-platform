@@ -18,4 +18,5 @@ agent:
       - transport: "stdio"
         server: "../tools/mcp_server.py"
         workspace: "{{ workspace_dir }}"
-    builtin: []
+    builtin:
+      - "send_notification"

@@ -60,6 +60,7 @@ class WebUIChannel(ChannelAdapter):
             "context_id": context_id,
             "message": message,
             "channel": self.name,
+            "notification_type": metadata.get("notification_type", "notification"),
             **{k: v for k, v in metadata.items() if k in ("task_id", "status")},
         })
         logger.info("notification_sent", context_id=context_id)

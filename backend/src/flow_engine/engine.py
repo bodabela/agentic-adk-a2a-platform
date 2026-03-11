@@ -182,14 +182,27 @@ class FlowEngine:
                 exec_state.status = FlowStatus.COMPLETED
                 exec_state.completed_at = datetime.now()
                 await self.state_store.save(exec_state)
+                resolved_output = context.resolve_dict(node.output)
                 await self.event_bus.emit(
                     "flow_completed",
                     {
                         "flow_id": flow_id,
                         "status": node.status,
-                        "output": context.resolve_dict(node.output),
+                        "output": resolved_output,
                     },
                 )
+
+                # Send final result to the flow's channel
+                if self._interaction_broker and self._channel:
+                    result_text = str(resolved_output.get("result", resolved_output))
+                    if result_text:
+                        await self._interaction_broker.notify_channel(
+                            channel=self._channel,
+                            message=result_text,
+                            context_id=flow_id,
+                            metadata={"task_id": flow_id, "status": "completed", "notification_type": "result"},
+                        )
+
                 break
 
             current_state = next_state

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from google.adk.agents import Agent
-from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams
+from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams, SseConnectionParams, StreamableHTTPConnectionParams
 from google.genai import types as genai_types
 from mcp.client.stdio import StdioServerParameters
 
@@ -161,36 +161,123 @@ class AgentFactory:
         return tools
 
     def _build_mcp_tool(self, mcp_conf: MCPToolConfig, agent_name: str) -> McpToolset | None:
+        """Build an McpToolset for any supported transport."""
+        tool_filter = mcp_conf.tool_filter or None
+        ws_dir = str(self._workspace_dir)
+
+        # --- stdio transport ---
         if mcp_conf.transport == "stdio":
-            if not mcp_conf.server:
-                logger.warning("mcp_missing_server", agent=agent_name)
-                return None
-            # Resolve server path relative to the agent's own directory
-            agent_dir = self._agents_dir / agent_name
-            server_path = (agent_dir / mcp_conf.server).resolve()
-            if not server_path.is_file():
-                logger.warning("mcp_server_not_found", path=str(server_path), agent=agent_name)
-                return None
+            return self._build_mcp_stdio(mcp_conf, agent_name, ws_dir, tool_filter)
 
-            # Resolve workspace template
-            workspace = str(self._workspace_dir)
-            if mcp_conf.workspace:
-                workspace = mcp_conf.workspace.replace("{{ workspace_dir }}", str(self._workspace_dir))
+        # --- sse transport ---
+        if mcp_conf.transport == "sse":
+            return self._build_mcp_sse(mcp_conf, agent_name, ws_dir, tool_filter)
 
+        # --- streamable_http transport ---
+        if mcp_conf.transport == "streamable_http":
+            return self._build_mcp_streamable_http(mcp_conf, agent_name, ws_dir, tool_filter)
+
+        logger.warning("mcp_unknown_transport", transport=mcp_conf.transport, agent=agent_name)
+        return None
+
+    def _build_mcp_stdio(
+        self, mcp_conf: MCPToolConfig, agent_name: str, ws_dir: str, tool_filter: list[str] | None,
+    ) -> McpToolset | None:
+        """Build stdio McpToolset — either simple (server=) or advanced (command=)."""
+        if mcp_conf.command:
+            # Advanced mode: arbitrary command (npx, node, uvx, etc.)
+            args = [self._resolve_templates(a, ws_dir) for a in mcp_conf.args]
+            env = {k: self._resolve_templates(v, ws_dir) for k, v in mcp_conf.env.items()} or None
+            logger.info("mcp_stdio_command", agent=agent_name, command=mcp_conf.command, args=args)
             return McpToolset(
                 connection_params=StdioConnectionParams(
                     server_params=StdioServerParameters(
-                        command=sys.executable,
-                        args=[str(server_path), "--workspace", workspace],
+                        command=mcp_conf.command,
+                        args=args,
+                        env=env,
                     ),
                 ),
+                tool_filter=tool_filter,
             )
 
-        if mcp_conf.transport == "sse":
-            logger.info("mcp_sse_not_supported_yet", agent=agent_name)
+        if not mcp_conf.server:
+            logger.warning("mcp_missing_server_or_command", agent=agent_name)
             return None
 
-        return None
+        # Simple mode: Python MCP server relative to agent directory
+        agent_dir = self._agents_dir / agent_name
+        server_path = (agent_dir / mcp_conf.server).resolve()
+        if not server_path.is_file():
+            logger.warning("mcp_server_not_found", path=str(server_path), agent=agent_name)
+            return None
+
+        workspace = ws_dir
+        if mcp_conf.workspace:
+            workspace = self._resolve_templates(mcp_conf.workspace, ws_dir)
+
+        return McpToolset(
+            connection_params=StdioConnectionParams(
+                server_params=StdioServerParameters(
+                    command=sys.executable,
+                    args=[str(server_path), "--workspace", workspace],
+                ),
+            ),
+            tool_filter=tool_filter,
+        )
+
+    def _build_mcp_sse(
+        self, mcp_conf: MCPToolConfig, agent_name: str, ws_dir: str, tool_filter: list[str] | None,
+    ) -> McpToolset | None:
+        """Build SSE McpToolset."""
+        if not mcp_conf.url:
+            logger.warning("mcp_sse_missing_url", agent=agent_name)
+            return None
+
+        url = self._resolve_templates(mcp_conf.url, ws_dir)
+        headers = {k: self._resolve_templates(v, ws_dir) for k, v in mcp_conf.headers.items()} or None
+        logger.info("mcp_sse_connect", agent=agent_name, url=url)
+        return McpToolset(
+            connection_params=SseConnectionParams(
+                url=url,
+                headers=headers,
+                timeout=mcp_conf.timeout,
+                sse_read_timeout=mcp_conf.sse_read_timeout,
+            ),
+            tool_filter=tool_filter,
+        )
+
+    def _build_mcp_streamable_http(
+        self, mcp_conf: MCPToolConfig, agent_name: str, ws_dir: str, tool_filter: list[str] | None,
+    ) -> McpToolset | None:
+        """Build Streamable HTTP McpToolset."""
+        if not mcp_conf.url:
+            logger.warning("mcp_streamable_http_missing_url", agent=agent_name)
+            return None
+
+        url = self._resolve_templates(mcp_conf.url, ws_dir)
+        headers = {k: self._resolve_templates(v, ws_dir) for k, v in mcp_conf.headers.items()} or None
+        logger.info("mcp_streamable_http_connect", agent=agent_name, url=url)
+        return McpToolset(
+            connection_params=StreamableHTTPConnectionParams(
+                url=url,
+                headers=headers,
+                timeout=mcp_conf.timeout,
+                sse_read_timeout=mcp_conf.sse_read_timeout,
+            ),
+            tool_filter=tool_filter,
+        )
+
+    @staticmethod
+    def _resolve_templates(value: str, workspace_dir: str) -> str:
+        """Replace template variables in a string value."""
+        import os
+        result = value.replace("{{ workspace_dir }}", workspace_dir)
+        # Support {{ env.VAR_NAME }} for environment variable interpolation
+        import re
+        for match in re.finditer(r"\{\{\s*env\.(\w+)\s*\}\}", result):
+            env_val = os.environ.get(match.group(1), "")
+            result = result.replace(match.group(0), env_val)
+        return result
 
     def _resolve_builtin(
         self,
@@ -213,6 +300,12 @@ class AgentFactory:
                     task_id, interaction_broker, context_type, channel,
                 )
             return self._create_ask_user_tool(task_id, pending_interactions, event_bus, context_type)
+
+        if name == "send_notification":
+            return self._create_send_notification_tool(task_id, interaction_broker, channel)
+
+        if name == "list_channels":
+            return self._create_list_channels_tool(interaction_broker)
 
         logger.warning("unknown_builtin_tool", name=name)
         return None
@@ -367,6 +460,83 @@ class AgentFactory:
             return response
 
         return ask_user
+
+    def _create_send_notification_tool(
+        self,
+        task_id: str | None,
+        broker: Any | None,
+        channel: str = "web_ui",
+    ):
+        """Create a tool that lets the agent send one-way notifications to channels."""
+        if not broker:
+            logger.warning("send_notification_skipped", reason="no interaction_broker")
+            return None
+
+        _broker = broker
+        _default_channel = channel
+        _context_id = task_id or ""
+
+        async def send_notification(
+            message: str,
+            channel: str = "",
+            metadata: str = "{}",
+        ) -> str:
+            """Send a one-way notification message to a communication channel.
+
+            Use this tool to proactively inform the user about progress, results,
+            or important updates without expecting a response.
+
+            Args:
+                message: The notification text to send.
+                channel: Target channel ("web_ui", "whatsapp", "teams"). Defaults to the task's channel.
+                metadata: Optional JSON string with extra data (e.g. {"phone": "+36..."}).
+
+            Returns:
+                Confirmation of delivery.
+            """
+            target = channel or _default_channel
+            try:
+                meta = json.loads(metadata) if metadata and metadata != "{}" else {}
+            except (json.JSONDecodeError, TypeError):
+                meta = {}
+
+            success = await _broker.notify_channel(
+                channel=target,
+                message=message,
+                context_id=_context_id,
+                metadata=meta,
+            )
+
+            if success:
+                logger.info("send_notification_ok", channel=target, context_id=_context_id)
+                return f"Notification sent to {target}."
+            else:
+                logger.warning("send_notification_failed", channel=target)
+                return f"Channel '{target}' is not available. Available: {', '.join(_broker.available_channels)}"
+
+        return send_notification
+
+    @staticmethod
+    def _create_list_channels_tool(broker: Any | None):
+        """Create a tool that lists available communication channels."""
+        if not broker:
+            logger.warning("list_channels_skipped", reason="no interaction_broker")
+            return None
+
+        _broker = broker
+
+        async def list_channels() -> str:
+            """List all available communication channels.
+
+            Returns a JSON array of channel names (e.g. ["web_ui", "whatsapp", "teams"]).
+            Use this to discover which channels are available before sending notifications.
+
+            Returns:
+                JSON array of channel name strings.
+            """
+            return json.dumps(_broker.available_channels)
+
+        return list_channels
 
     @staticmethod
     def _inject_peer_context(instruction: str, peer_agents: list[Agent]) -> str:

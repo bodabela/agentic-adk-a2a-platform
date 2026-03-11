@@ -89,6 +89,10 @@ export function FlowsPage() {
   const [selectedProvider, setSelectedProvider] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
 
+  // Channel state
+  const [channels, setChannels] = useState<string[]>([]);
+  const [selectedChannel, setSelectedChannel] = useState('');
+
   // Flow diagram definition
   const [flowDefinition, setFlowDefinition] = useState<FlowDefinitionData | null>(null);
   const [diagramLoading, setDiagramLoading] = useState(false);
@@ -96,13 +100,17 @@ export function FlowsPage() {
   // Agent model map: { agentName: { model, provider? } }
   const [agentModels, setAgentModels] = useState<Record<string, { model: string }>>({});
 
-  // Fetch available flows + agent models on mount
+  // Fetch available flows + agent models + channels on mount
   useEffect(() => {
     fetch('/api/flows/')
       .then((r) => r.json())
       .then((data: { flows: FlowInfo[] }) => {
         setAvailableFlows(data.flows);
       })
+      .catch(() => {});
+    fetch('/api/interactions/channels')
+      .then((r) => r.json())
+      .then((d) => { if (d.channels) setChannels(d.channels); })
       .catch(() => {});
     fetch('/api/agents/')
       .then((r) => r.json())
@@ -157,6 +165,7 @@ export function FlowsPage() {
         triggerData,
         selectedProvider || undefined,
         selectedModel || undefined,
+        selectedChannel || undefined,
       );
     } finally {
       setLoading(false);
@@ -356,7 +365,7 @@ export function FlowsPage() {
               }}
             />
 
-            {/* LLM Provider / Model selectors */}
+            {/* LLM Provider / Model / Channel selectors */}
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <select
                 value={selectedProvider}
@@ -384,23 +393,45 @@ export function FlowsPage() {
               </select>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || !flowFile.trim()}
-              style={{
-                padding: '0.625rem 1.5rem',
-                background: '#7c3aed',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 6,
-                cursor: loading ? 'wait' : 'pointer',
-                opacity: loading || !flowFile.trim() ? 0.5 : 1,
-                fontSize: '1.3rem',
-                alignSelf: 'flex-start',
-              }}
-            >
-              {loading ? 'Starting...' : 'Start Flow'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              {channels.length > 1 && (
+                <select
+                  value={selectedChannel}
+                  onChange={(e) => setSelectedChannel(e.target.value)}
+                  disabled={loading}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    background: '#0f172a',
+                    border: '1px solid #334155',
+                    borderRadius: 6,
+                    color: '#e2e8f0',
+                    fontSize: '0.9rem',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="">web_ui</option>
+                  {channels.filter(c => c !== 'web_ui').map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="submit"
+                disabled={loading || !flowFile.trim()}
+                style={{
+                  padding: '0.625rem 1.5rem',
+                  background: '#7c3aed',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: loading ? 'wait' : 'pointer',
+                  opacity: loading || !flowFile.trim() ? 0.5 : 1,
+                  fontSize: '1.3rem',
+                }}
+              >
+                {loading ? 'Starting...' : 'Start Flow'}
+              </button>
+            </div>
           </form>
 
           {/* Current event – live detail of the latest event */}

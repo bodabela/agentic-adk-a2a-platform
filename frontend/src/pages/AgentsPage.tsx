@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAgentStore, type AgentDefinition } from '../stores/agentStore';
+import { CapabilityBadges, ToolBadges } from '../components/common/AgentBadges';
 
 const cardStyle: React.CSSProperties = {
   background: '#1e293b',
@@ -115,10 +116,11 @@ export function AgentsPage() {
             onClick={() => handleSelect(a.name)}
           >
             <div style={{ fontWeight: 600, color: '#e2e8f0' }}>{a.name}</div>
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{a.category} | {a.model}</div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 4 }}>
-              {a.capabilities.join(', ')}
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: 4 }}>{a.category} | {a.model}</div>
+            <div style={{ marginBottom: 4 }}>
+              <CapabilityBadges items={a.capabilities} />
             </div>
+            <ToolBadges items={a.tools} />
           </div>
         ))}
       </div>
@@ -187,13 +189,22 @@ export function AgentsPage() {
                     <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Category</div>
                     <div style={{ color: '#e2e8f0' }}>{selectedAgent.definition.category}</div>
                   </div>
-                  <div>
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Capabilities</div>
-                    <div style={{ color: '#e2e8f0' }}>{selectedAgent.definition.capabilities.join(', ')}</div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: 4 }}>Capabilities</div>
+                    <CapabilityBadges items={selectedAgent.definition.capabilities} />
+                    {selectedAgent.definition.capabilities.length === 0 && (
+                      <span style={{ color: '#64748b' }}>none</span>
+                    )}
                   </div>
-                  <div>
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Builtin Tools</div>
-                    <div style={{ color: '#e2e8f0' }}>{selectedAgent.definition.tools.builtin.join(', ') || 'none'}</div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: 4 }}>Tools</div>
+                    {(() => {
+                      const agentFromList = agents.find((a: AgentDefinition) => a.name === selectedAgent.definition!.name);
+                      const toolNames = agentFromList?.tools || [];
+                      return toolNames.length > 0
+                        ? <ToolBadges items={toolNames} />
+                        : <span style={{ color: '#64748b' }}>none</span>;
+                    })()}
                   </div>
                 </div>
               </div>

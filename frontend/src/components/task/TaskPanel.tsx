@@ -168,6 +168,26 @@ export function TaskPanel() {
           <TaskAgentDiagram events={activeTask.events} status={activeTask.status} />
         )}
 
+        {activeTask && activeTask.notifications.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {activeTask.notifications.map((msg, i) => (
+              <div key={i} style={{
+                background: '#1a1a2e',
+                border: '1px solid #6366f1',
+                borderRadius: 8,
+                padding: '0.75rem 1rem',
+              }}>
+                <div style={{ color: '#a5b4fc', fontWeight: 600, fontSize: '0.75rem', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Notification
+                </div>
+                <div style={{ color: '#e2e8f0', fontSize: '1rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                  {msg}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {activeTask?.finalResult && (
           <div style={{
             background: '#0c2d1b',

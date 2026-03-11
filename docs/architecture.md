@@ -44,9 +44,9 @@ Ez a dokumentum a platform teljes technikai architektúráját ismerteti: a dekl
               ┌────────────────┼────────────────┐
               │                │                │
      ┌────────▼──────┐ ┌──────▼──────┐ ┌───────▼─────┐
-     │ Google ADK    │ │ MCP Tools   │ │ LLM         │
-     │ Runner        │ │ (stdio)     │ │ Providers   │
-     └───────────────┘ └─────────────┘ └─────────────┘
+     │ Google ADK    │ │ MCP Tools          │ │ LLM         │
+     │ Runner        │ │ stdio│sse│http    │ │ Providers   │
+     └───────────────┘ └────────────────────┘ └─────────────┘
 ```
 
 A platform két fő végrehajtási útvonalat kínál:
@@ -118,9 +118,31 @@ agent:
   # Eszközök
   tools:
     mcp:
+      # --- stdio transport: lokális Python MCP szerver ---
       - transport: "stdio"
-        server: "../tools/mcp_server.py"    # Relatív az agents/ könyvtárhoz
-        workspace: "{{ workspace_dir }}"     # Template változó, futáskor helyettesítve
+        server: "../tools/mcp_server.py"    # Relatív az ágens könyvtárhoz
+        workspace: "{{ workspace_dir }}"     # Template változó
+
+      # --- stdio transport: tetszőleges parancs (npx, node, uvx, stb.) ---
+      - transport: "stdio"
+        command: "npx"
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "{{ workspace_dir }}"]
+        env:                                 # Opcionális környezeti változók
+          NODE_ENV: "production"
+
+      # --- sse transport: távoli/lokális SSE MCP szerver ---
+      - transport: "sse"
+        url: "http://localhost:8080/sse"
+        headers:                             # Opcionális HTTP headerek
+          Authorization: "Bearer {{ env.MCP_API_KEY }}"
+        timeout: 10.0                        # Kapcsolat timeout (mp, default: 5.0)
+        sse_read_timeout: 300.0              # Olvasási timeout (mp, default: 300.0)
+
+      # --- streamable_http transport: újabb MCP protokoll ---
+      - transport: "streamable_http"
+        url: "http://localhost:3000/mcp"
+        tool_filter: ["search", "create_issue"]   # Csak ezeket a toolokat expose-olja
+
     builtin:
       - "exit_loop"
       - "ask_user"    # Speciális: a framework biztosítja az implementációt
@@ -194,10 +216,16 @@ create_agent(name, model_override, task_id, interaction_broker, channel, ...)
     ├── 2. Modell feloldása (override > YAML > default)
     ├── 3. Instruction feloldása (fájl beolvasás vagy inline)
     ├── 4. Eszközök építése (_build_tools)
-    │       ├── MCP toolok (_build_mcp_tool → StdioConnectionParams)
+    │       ├── MCP toolok (_build_mcp_tool)
+    │       │     ├── stdio (simple) → StdioConnectionParams (Python szerver)
+    │       │     ├── stdio (advanced) → StdioConnectionParams (command + args)
+    │       │     ├── sse → SseConnectionParams (URL + headers)
+    │       │     └── streamable_http → StreamableHTTPConnectionParams (URL + headers)
     │       └── Builtin toolok (_resolve_builtin)
     │             ├── "exit_loop" → ADK exit_loop tool
-    │             └── "ask_user" → _create_ask_user_tool_broker() VAGY _create_ask_user_tool()
+    │             ├── "ask_user" → _create_ask_user_tool_broker() VAGY _create_ask_user_tool()
+    │             ├── "send_notification" → _create_send_notification_tool()
+    │             └── "list_channels" → _create_list_channels_tool()
     ├── 5. GenerateContentConfig (thinking)
     ├── 6. Peer context injektálás (opcionális)
     └── 7. Return Agent(model, name, instruction, tools, ...)
@@ -205,22 +233,113 @@ create_agent(name, model_override, task_id, interaction_broker, channel, ...)
 
 ### 3.2 MCP eszközök
 
-Az MCP (Model Context Protocol) eszközök stdio transzporton keresztül kapcsolódnak:
+Az MCP (Model Context Protocol) eszközök három transzporton keresztül kapcsolódhatnak. A platform a Google ADK `McpToolset` osztályát használja, amely mind a három transzportot natívan támogatja.
+
+#### Támogatott transzportok
+
+| Transzport | Kapcsolódás | Mikor használjuk |
+|------------|-------------|------------------|
+| **stdio** (simple) | Lokális Python MCP szerver, `server` relatív útvonal | Saját fejlesztésű MCP toolok |
+| **stdio** (advanced) | Tetszőleges command (`npx`, `node`, `uvx`, stb.) | Közösségi/npm MCP szerverek |
+| **sse** | HTTP SSE kapcsolat URL-re | Távoli MCP szerverek, meglévő SSE végpontok |
+| **streamable_http** | HTTP Streamable protokoll URL-re | Újabb MCP szerverek, prod környezet |
+
+#### 1. stdio — Simple mode (Python MCP szerver)
 
 ```python
-# Belső működés
+# Belső működés — _build_mcp_stdio()
 McpToolset(
     connection_params=StdioConnectionParams(
-        command="python",
-        args=[str(server_path)],
-        cwd=str(workspace_path),
-    )
+        server_params=StdioServerParameters(
+            command=sys.executable,      # A jelenlegi Python interpreter
+            args=[str(server_path), "--workspace", workspace],
+        ),
+    ),
+    tool_filter=["tool1", "tool2"],      # Opcionális: csak ezek a toolok
 )
 ```
 
-- A `server` útvonal relatív az ágens könyvtárához
+- A `server` útvonal relatív az ágens könyvtárához (`agents/<agent_name>/`)
 - A `{{ workspace_dir }}` template változó a konfigurált workspace könyvtárra cserélődik
 - Minden `create_agent()` hívás új MCP process-t indít (stdio lifecycle)
+
+#### 2. stdio — Advanced mode (tetszőleges parancs)
+
+```python
+# Belső működés — _build_mcp_stdio() command ág
+McpToolset(
+    connection_params=StdioConnectionParams(
+        server_params=StdioServerParameters(
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
+            env={"NODE_ENV": "production"},  # Opcionális extra env vars
+        ),
+    ),
+)
+```
+
+- Bármilyen MCP-kompatibilis szerver indítható: `npx`, `node`, `uvx`, `docker run`, stb.
+- Az `args` és `env` mezőkben template változók használhatók
+
+#### 3. sse — SSE MCP szerver
+
+```python
+# Belső működés — _build_mcp_sse()
+McpToolset(
+    connection_params=SseConnectionParams(
+        url="http://localhost:8080/sse",
+        headers={"Authorization": "Bearer <token>"},
+        timeout=10.0,                    # Kapcsolat timeout (default: 5.0)
+        sse_read_timeout=300.0,          # Olvasási timeout (default: 300.0)
+    ),
+)
+```
+
+- Távoli vagy lokális SSE MCP szerverekhez
+- HTTP headers támogatás (autentikáció, API kulcsok)
+- `{{ env.VAR_NAME }}` template változók a headerekben
+
+#### 4. streamable_http — Streamable HTTP MCP szerver
+
+```python
+# Belső működés — _build_mcp_streamable_http()
+McpToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url="http://localhost:3000/mcp",
+        headers={"Authorization": "Bearer <token>"},
+        timeout=5.0,
+        sse_read_timeout=300.0,
+    ),
+)
+```
+
+- Az MCP protokoll legújabb HTTP-alapú transzportja
+- Ugyanazok a konfigurációs lehetőségek mint az SSE-nél
+
+#### Template rendszer
+
+Minden MCP konfiguráció mező támogatja a template változókat:
+
+| Template | Leírás | Példa |
+|----------|--------|-------|
+| `{{ workspace_dir }}` | A konfigurált workspace könyvtár abszolút útvonala | `/home/user/workspace` |
+| `{{ env.VAR_NAME }}` | Környezeti változó értéke | `{{ env.MCP_API_KEY }}` → `sk-...` |
+
+A template feloldás az `AgentFactory._resolve_templates()` metódusban történik, és a következő mezőkre vonatkozik: `url`, `args[]`, `headers{}`, `env{}`, `workspace`.
+
+#### Tool filter
+
+Opcionálisan szűrhetjük, hogy egy MCP szerver mely tooljai legyenek elérhetők az ágens számára:
+
+```yaml
+tools:
+  mcp:
+    - transport: "sse"
+      url: "http://github-mcp.example.com/sse"
+      tool_filter: ["search_issues", "create_issue"]   # Csak ezek lesznek elérhetők
+```
+
+> **Részletes beállítási útmutató:** [docs/mcp-setup.md](mcp-setup.md)
 
 ### 3.3 Peer context injektálás
 
@@ -581,7 +700,103 @@ class Interaction:
 6. Ágens folytatja a munkát a válasszal
 ```
 
-### 8.4 ask_user tool implementáció
+### 8.4 Csatorna értesítések (Channel Notifications)
+
+A kérdés-válasz interakciókon túl a csatornák **egyirányú értesítéseket** is fogadhatnak — tipikusan a task vagy flow végeredményét. Ez csatorna-független: minden csatorna ugyanazon a `send_notification()` interfészen keresztül kapja meg az eredményt.
+
+```
+Task/Flow befejezés
+    │
+    └── InteractionBroker.notify_channel(channel, message, context_id, metadata)
+            │
+            ├── WebUIChannel.send_notification()
+            │       └── event_bus.emit("task_notification", {context_id, message})
+            │               └── Frontend: taskStore.setFinalResult() → zöld "Result" doboz
+            │
+            ├── WhatsAppChannel.send_notification()
+            │       └── Twilio REST API → WhatsApp üzenet a felhasználónak
+            │
+            └── TeamsChannel.send_notification()
+                    └── Bot Framework → Teams üzenet
+```
+
+**ChannelAdapter.send_notification() interfész:**
+
+```python
+async def send_notification(
+    self,
+    message: str,
+    context_id: str = "",
+    metadata: dict | None = None,    # task_id, status, phone, stb.
+) -> None:
+    """Egyirányú értesítés küldése (nem vár választ)."""
+```
+
+**Használat Tasks-ban** (`backend/src/api/tasks.py`):
+
+```python
+# A task futás során gyűjti az utolsó agent_response szöveget
+final_response_text = ""
+task_channel = submission.channel or "web_ui"
+
+# ... event loop-ban:
+#     final_response_text = part.text  (agent_response-nál)
+
+# Task sikeres befejezése után:
+if final_response_text and interaction_broker:
+    await interaction_broker.notify_channel(
+        channel=task_channel,
+        message=final_response_text,
+        context_id=task_id,
+        metadata={"task_id": task_id, "status": "completed"},
+    )
+```
+
+**Használat Flows-ban** (`backend/src/flow_engine/engine.py`):
+
+A flow engine a terminális (végállapot) node elérésekor küldi ki az értesítést:
+
+```python
+# TerminalNode feldolgozása után:
+if self._interaction_broker and self._channel:
+    result_text = str(resolved_output.get("result", resolved_output))
+    await self._interaction_broker.notify_channel(
+        channel=self._channel,
+        message=result_text,
+        context_id=flow_id,
+        metadata={"task_id": flow_id, "status": "completed"},
+    )
+```
+
+**Csatorna-specifikus viselkedés:**
+
+| Csatorna | send_notification() implementáció |
+|----------|----------------------------------|
+| **web_ui** | SSE `task_notification` event → frontend `setFinalResult()` → zöld "Result" doboz |
+| **whatsapp** | Twilio REST API → üzenet a `metadata.phone` vagy az összes engedélyezett számra (4000 karakter limit) |
+| **teams** | Bot Framework → üzenet az utolsó beszélgetésbe |
+
+**Frontend megjelenítés (web_ui):**
+
+```typescript
+// useSSE.ts
+es.addEventListener('task_notification', (e) => {
+    const data = JSON.parse(e.data);
+    setTaskFinalResult(data.task_id || data.context_id, data.message);
+});
+
+// TaskPanel.tsx — zöld eredmény doboz
+{activeTask?.finalResult && (
+    <div style={{ background: '#0c2d1b', border: '1px solid #22c55e', ... }}>
+        <div style={{ color: '#4ade80' }}>Result</div>
+        <div>{activeTask.finalResult}</div>
+    </div>
+)}
+```
+
+Ez a minta biztosítja, hogy a web_ui is ugyanazon a `notify_channel()` mechanizmuson keresztül kapja az eredményt, mint a külső csatornák — nem a meglévő SSE task/flow eseményekből, hanem dedikált értesítésként.
+
+### 8.5 ask_user tool implementáció
 
 A factory két implementációt kínál:
 
@@ -611,13 +826,15 @@ async def ask_user(question, question_type="free_text", options=None) -> str:
 - Csak web_ui csatornát támogatja
 - Akkor használja, ha nincs `interaction_broker` konfigurálva
 
-### 8.5 Channel Adapter interfész
+### 8.6 Channel Adapter interfész
 
 ```python
 class ChannelAdapter(ABC):
     name: str                                    # "web_ui", "teams", "whatsapp"
 
     async def send_question(self, interaction: Interaction) -> None: ...
+    async def send_notification(self, message: str, context_id: str = "",
+                                metadata: dict | None = None) -> None: ...
     async def setup_routes(self, app: FastAPI) -> None: ...
     async def startup(self) -> None: ...
     async def shutdown(self) -> None: ...
@@ -630,7 +847,7 @@ class ChannelAdapter(ABC):
 | **TeamsChannel** | Bot Framework REST API + Adaptive Card | Webhook (`/api/channels/teams/webhook`) |
 | **WhatsAppChannel** | Twilio REST API | Webhook (`/api/channels/whatsapp/webhook`) |
 
-### 8.6 SQLite perzisztencia
+### 8.7 SQLite perzisztencia
 
 Az `InteractionStore` WAL módú SQLite-ot használ:
 
@@ -853,7 +1070,7 @@ async def lifespan(app):
 
 | Metódus | Útvonal | Leírás |
 |---------|---------|--------|
-| `POST` | `/api/tasks/` | Task beküldése (description, root_agent_definition, channel) |
+| `POST` | `/api/tasks/` | Task beküldése (description, root_agent_definition, channel). A `channel` határozza meg, hogy a végeredmény hova kerüljön (default: `web_ui`) |
 | `POST` | `/api/tasks/interact` | Legacy interakció válasz |
 | `GET` | `/api/tasks/{task_id}` | Task költségjelentés |
 
@@ -862,7 +1079,7 @@ async def lifespan(app):
 | Metódus | Útvonal | Leírás |
 |---------|---------|--------|
 | `GET` | `/api/flows/` | Flow definíciók listázása |
-| `POST` | `/api/flows/start` | Flow indítása |
+| `POST` | `/api/flows/start` | Flow indítása (flow_file, input, provider, model, channel). A `channel` határozza meg, hogy a végeredmény hova kerüljön |
 | `POST` | `/api/flows/interact` | Flow interakció válasz |
 | `GET` | `/api/flows/active` | Aktív flow-ok |
 | `GET` | `/api/flows/definition/{file}` | Flow definíció |
@@ -937,3 +1154,5 @@ async def lifespan(app):
 7. **Channel fallback** — Ha egy külső csatorna nem elérhető, a kérdés automatikusan a web_ui-n is megjelenik.
 
 8. **Peer awareness** — Sub-agentek ismerik egymás képességeit és direkt transfer-t kezdeményezhetnek, nem csak az orkesztrátoron keresztül.
+
+9. **Csatorna-független eredményküldés** — A task/flow végeredménye nem a streaming SSE eventek részeként, hanem dedikált `notify_channel()` híváson keresztül jut el a célcsatornára. Ez biztosítja, hogy a web_ui, WhatsApp és Teams is ugyanazon az interfészen kapja az eredményt — a csatorna csak a kézbesítési mechanizmust határozza meg, nem az üzleti logikát.

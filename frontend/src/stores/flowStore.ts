@@ -49,7 +49,7 @@ interface FlowStore {
   appendFlowStreamingText: (flowId: string, text: string, agent: string, isThought: boolean, model?: string) => void;
   addInteraction: (interaction: PendingInteraction) => void;
   resolveInteraction: (interactionId: string) => void;
-  startFlow: (flowFile: string, input: Record<string, unknown>, provider?: string, model?: string) => Promise<void>;
+  startFlow: (flowFile: string, input: Record<string, unknown>, provider?: string, model?: string, channel?: string) => Promise<void>;
 }
 
 export const useFlowStore = create<FlowStore>((set) => ({
@@ -115,11 +115,13 @@ export const useFlowStore = create<FlowStore>((set) => ({
       ),
     })),
 
-  startFlow: async (flowFile, input, provider?, model?) => {
+  startFlow: async (flowFile, input, provider?, model?, channel?) => {
+    const body: Record<string, unknown> = { flow_file: flowFile, input, provider, model };
+    if (channel) body.channel = channel;
     await fetch('/api/flows/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ flow_file: flowFile, input, provider, model }),
+      body: JSON.stringify(body),
     });
   },
 }));

@@ -147,14 +147,26 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
         last_event_time = time.monotonic()
         final_response_text = ""  # Track the last agent response for channel notification
         task_channel = submission.channel or "web_ui"
+        event_count = 0
 
         async for event in runner.run_async(
             user_id="user", session_id=session_id, new_message=user_message,
             run_config=RunConfig(streaming_mode=StreamingMode.SSE),
         ):
+            event_count += 1
             author = getattr(event, "author", None) or ""
             content = getattr(event, "content", None)
             is_partial = getattr(event, "partial", False)
+            is_final = getattr(event, "is_final_response", lambda: False)()
+            logger.info(
+                "task_adk_event",
+                task_id=task_id,
+                n=event_count,
+                author=author,
+                partial=is_partial,
+                final=is_final,
+                has_content=bool(content and getattr(content, "parts", None)),
+            )
 
             # Record cost from usage_metadata on non-partial events
             usage = getattr(event, "usage_metadata", None)
@@ -215,7 +227,11 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                             "is_thought": bool(is_thought),
                         })
                     else:
-                        final_response_text = part.text
+                        # Only capture human-readable text as final result
+                        # (skip raw JSON from sub-agent tool responses)
+                        stripped = part.text.strip()
+                        if not (stripped.startswith("{") or stripped.startswith("[")):
+                            final_response_text = part.text
                         await event_bus.emit("task_event", {
                             "task_id": task_id,
                             "event_type": "agent_response",
@@ -315,7 +331,14 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                     })
                     await asyncio.sleep(0)
 
-        logger.info("task_execution_completed", task_id=task_id)
+        logger.info(
+            "task_execution_completed",
+            task_id=task_id,
+            has_final_text=bool(final_response_text),
+            final_text_len=len(final_response_text) if final_response_text else 0,
+            channel=task_channel,
+            has_broker=bool(interaction_broker),
+        )
         await event_bus.emit("task_completed", {
             "task_id": task_id,
             "status": "success",
@@ -323,11 +346,18 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
 
         # Send final result to the task's channel
         if final_response_text and interaction_broker:
+            logger.info("task_notify_channel", task_id=task_id, channel=task_channel, text_len=len(final_response_text))
             await interaction_broker.notify_channel(
                 channel=task_channel,
                 message=final_response_text,
                 context_id=task_id,
-                metadata={"task_id": task_id, "status": "completed"},
+                metadata={"task_id": task_id, "status": "completed", "notification_type": "result"},
+            )
+        else:
+            logger.warning(
+                "task_notify_skipped",
+                task_id=task_id,
+                reason="no_final_text" if not final_response_text else "no_broker",
             )
 
     except AgentSuspended as suspended:

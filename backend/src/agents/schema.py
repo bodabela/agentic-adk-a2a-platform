@@ -10,11 +10,30 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class MCPToolConfig(BaseModel):
-    """Single MCP server connection."""
-    transport: str = "stdio"                    # "stdio" | "sse"
+    """Single MCP server connection.
+
+    Supported transports:
+      - stdio: Local process (default). Use ``server`` for Python scripts
+        (resolved relative to the agent dir, run with the current interpreter)
+        or ``command`` + ``args`` for arbitrary executables (npx, node, …).
+      - sse: Remote/local SSE MCP server. Requires ``url``.
+      - streamable_http: Remote/local Streamable HTTP MCP server. Requires ``url``.
+    """
+    transport: str = "stdio"                    # "stdio" | "sse" | "streamable_http"
+    # stdio — simple mode (Python MCP server relative to agent dir)
     server: str | None = None                   # relative path for stdio
     workspace: str | None = None                # template: "{{ workspace_dir }}"
-    url: str | None = None                      # for sse transport
+    # stdio — advanced mode (arbitrary command)
+    command: str | None = None                  # e.g. "npx", "node", "uvx"
+    args: list[str] = Field(default_factory=list)  # CLI arguments
+    env: dict[str, str] = Field(default_factory=dict)  # extra env vars
+    # sse / streamable_http
+    url: str | None = None                      # server URL
+    headers: dict[str, str] = Field(default_factory=dict)  # HTTP headers
+    timeout: float = 5.0                        # connection timeout (seconds)
+    sse_read_timeout: float = 300.0             # read timeout (seconds)
+    # Optional: filter which tools to expose from this server
+    tool_filter: list[str] | None = None        # tool name whitelist
 
 
 class ToolsConfig(BaseModel):

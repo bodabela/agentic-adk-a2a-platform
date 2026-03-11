@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { CapabilityBadges, ToolBadges } from '../common/AgentBadges';
 
 interface AgentInfo {
   name: string;
@@ -79,43 +80,10 @@ export function AgentPanel({ activeAgentName = '' }: { activeAgentName?: string 
             {agent.description}
           </div>
 
-          {agent.capabilities.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginBottom: '0.375rem' }}>
-              {agent.capabilities.map((cap) => (
-                <span
-                  key={cap}
-                  style={{
-                    fontSize: '0.975rem',
-                    padding: '0.125rem 0.375rem',
-                    borderRadius: 4,
-                    background: '#1e3a5f',
-                    color: '#60a5fa',
-                  }}
-                >
-                  {cap}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {agent.tools.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-              {agent.tools.map((tool) => (
-                <span
-                  key={tool}
-                  style={{
-                    fontSize: '0.975rem',
-                    padding: '0.125rem 0.375rem',
-                    borderRadius: 4,
-                    background: '#14532d',
-                    color: '#4ade80',
-                  }}
-                >
-                  {tool}
-                </span>
-              ))}
-            </div>
-          )}
+          <div style={{ marginBottom: '0.375rem' }}>
+            <CapabilityBadges items={agent.capabilities} />
+          </div>
+          <ToolBadges items={agent.tools} />
 
           {agent.model && (
             <div style={{ color: '#475569', fontSize: '0.975rem', marginTop: '0.375rem' }}>
