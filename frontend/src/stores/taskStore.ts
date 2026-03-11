@@ -13,6 +13,7 @@ interface Task {
   events: TaskEvent[];
   cost_usd: number;
   error?: string;
+  finalResult?: string;
 }
 
 interface InteractionOption {
@@ -39,6 +40,7 @@ interface TaskStore {
   appendStreamingText: (taskId: string, text: string, agent: string, isThought: boolean, model?: string) => void;
   setActiveTask: (taskId: string | null) => void;
   updateTaskStatus: (taskId: string, status: string, error?: string) => void;
+  setFinalResult: (taskId: string, message: string) => void;
   addInteraction: (interaction: TaskPendingInteraction) => void;
   resolveInteraction: (interactionId: string) => void;
 }
@@ -123,6 +125,18 @@ export const useTaskStore = create<TaskStore>((set) => ({
         tasks: {
           ...state.tasks,
           [taskId]: { ...task, status, ...(error !== undefined && { error }) },
+        },
+      };
+    }),
+
+  setFinalResult: (taskId, message) =>
+    set((state) => {
+      const task = state.tasks[taskId];
+      if (!task) return state;
+      return {
+        tasks: {
+          ...state.tasks,
+          [taskId]: { ...task, finalResult: message },
         },
       };
     }),

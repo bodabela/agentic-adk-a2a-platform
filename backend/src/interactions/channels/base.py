@@ -25,6 +25,13 @@ class ChannelAdapter(ABC):
     async def send_question(self, interaction: Interaction) -> None:
         """Deliver the interaction prompt to the user through this channel."""
 
+    async def send_notification(self, message: str, context_id: str = "", metadata: dict | None = None) -> None:
+        """Send a one-way notification (no response expected).
+
+        Used for delivering task results, status updates, etc.
+        Override in subclasses that support outbound messages.
+        """
+
     async def setup_routes(self, app: FastAPI) -> None:
         """Register any webhook/callback routes needed by this channel.
 

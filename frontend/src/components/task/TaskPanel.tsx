@@ -168,6 +168,22 @@ export function TaskPanel() {
           <TaskAgentDiagram events={activeTask.events} status={activeTask.status} />
         )}
 
+        {activeTask?.finalResult && (
+          <div style={{
+            background: '#0c2d1b',
+            border: '1px solid #22c55e',
+            borderRadius: 8,
+            padding: '1rem 1.25rem',
+          }}>
+            <div style={{ color: '#4ade80', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Result
+            </div>
+            <div style={{ color: '#e2e8f0', fontSize: '1.1rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+              {activeTask.finalResult}
+            </div>
+          </div>
+        )}
+
         <div>
           <h2 style={{ color: '#e2e8f0', fontSize: '1.25rem', marginBottom: '1rem' }}>
             Task History

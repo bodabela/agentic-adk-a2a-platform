@@ -48,6 +48,54 @@ class WhatsAppChannel(ChannelAdapter):
         self._allowed_numbers = set(allowed_numbers or [])
         self._broker = broker
 
+    async def send_notification(self, message: str, context_id: str = "", metadata: dict | None = None) -> None:
+        """Send a one-way notification via WhatsApp."""
+        metadata = metadata or {}
+        to_number = metadata.get("phone")
+        # Truncate for WhatsApp 4096 char limit
+        if len(message) > 4000:
+            message = message[:3997] + "..."
+
+        if to_number:
+            await self._send_text(to_number, message)
+        elif self._allowed_numbers:
+            for number in self._allowed_numbers:
+                await self._send_text(number, message)
+        else:
+            logger.error("whatsapp_notification_no_recipient", context_id=context_id)
+
+    async def _send_text(self, to_number: str, body: str) -> None:
+        """Send a plain text WhatsApp message."""
+        if not self._account_sid or not self._auth_token:
+            logger.error("whatsapp_not_configured")
+            return
+
+        import aiohttp
+        import base64
+        url = (
+            f"https://api.twilio.com/2010-04-01/Accounts/"
+            f"{self._account_sid}/Messages.json"
+        )
+        auth = base64.b64encode(
+            f"{self._account_sid}:{self._auth_token}".encode()
+        ).decode()
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                data={
+                    "From": f"whatsapp:{self._from_number}",
+                    "To": f"whatsapp:{to_number}",
+                    "Body": body,
+                },
+                headers={"Authorization": f"Basic {auth}"},
+            ) as resp:
+                if resp.status < 300:
+                    logger.info("whatsapp_notification_sent", to=to_number)
+                else:
+                    resp_body = await resp.text()
+                    logger.error("whatsapp_notification_failed", status=resp.status, body=resp_body[:500])
+
     async def send_question(self, interaction: Interaction) -> None:
         """Send a WhatsApp message via Twilio."""
         to_number = interaction.metadata.get("phone")

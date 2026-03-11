@@ -52,3 +52,14 @@ class WebUIChannel(ChannelAdapter):
             interaction_id=interaction.interaction_id,
             event=event_name,
         )
+
+    async def send_notification(self, message: str, context_id: str = "", metadata: dict | None = None) -> None:
+        """Emit a task_notification SSE event for the frontend."""
+        metadata = metadata or {}
+        await self._event_bus.emit("task_notification", {
+            "context_id": context_id,
+            "message": message,
+            "channel": self.name,
+            **{k: v for k, v in metadata.items() if k in ("task_id", "status")},
+        })
+        logger.info("notification_sent", context_id=context_id)

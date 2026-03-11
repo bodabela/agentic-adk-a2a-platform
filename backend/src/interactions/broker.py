@@ -279,6 +279,31 @@ class InteractionBroker:
         """Expire interactions that have passed their TTL."""
         return self._store.expire_old()
 
+    # -- Notifications -------------------------------------------------------
+
+    async def notify_channel(
+        self,
+        channel: str,
+        message: str,
+        context_id: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        """Send a one-way notification to a channel (no response expected).
+
+        Returns True if the notification was sent successfully.
+        """
+        adapter = self._channels.get(channel)
+        if not adapter:
+            logger.warning("notify_no_channel", channel=channel)
+            return False
+        try:
+            await adapter.send_notification(message, context_id=context_id, metadata=metadata)
+            logger.info("notification_sent", channel=channel, context_id=context_id)
+            return True
+        except Exception as e:
+            logger.error("notification_failed", channel=channel, error=str(e))
+            return False
+
     # -- Helpers -------------------------------------------------------------
 
     @staticmethod

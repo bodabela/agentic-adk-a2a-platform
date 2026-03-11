@@ -25,6 +25,7 @@ export function useSSE() {
   const appendTaskStreamingText = useTaskStore((s) => s.appendStreamingText);
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
   const addTaskInteraction = useTaskStore((s) => s.addInteraction);
+  const setTaskFinalResult = useTaskStore((s) => s.setFinalResult);
   const updateFlowState = useFlowStore((s) => s.updateFlowState);
   const addFlowEvent = useFlowStore((s) => s.addFlowEvent);
   const appendFlowStreamingText = useFlowStore((s) => s.appendFlowStreamingText);
@@ -77,6 +78,13 @@ export function useSSE() {
         options: data.options,
         channel: data.channel,
       });
+    });
+
+    es.addEventListener('task_notification', (e) => {
+      const data = JSON.parse(e.data);
+      if (data.context_id || data.task_id) {
+        setTaskFinalResult(data.task_id || data.context_id, data.message);
+      }
     });
 
     es.addEventListener('task_user_response', (e) => {
@@ -189,7 +197,7 @@ export function useSSE() {
     };
 
     eventSourceRef.current = es;
-  }, [addTaskEvent, appendTaskStreamingText, updateTaskStatus, addTaskInteraction, updateFlowState, addFlowEvent, appendFlowStreamingText, addInteraction, addCostEvent]);
+  }, [addTaskEvent, appendTaskStreamingText, updateTaskStatus, addTaskInteraction, setTaskFinalResult, updateFlowState, addFlowEvent, appendFlowStreamingText, addInteraction, addCostEvent]);
 
   useEffect(() => {
     connect();

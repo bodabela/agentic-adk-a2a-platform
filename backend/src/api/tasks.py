@@ -145,6 +145,8 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
         cost_tracker = request.app.state.cost_tracker
         default_provider = llm_config.defaults.provider or "google"
         last_event_time = time.monotonic()
+        final_response_text = ""  # Track the last agent response for channel notification
+        task_channel = submission.channel or "web_ui"
 
         async for event in runner.run_async(
             user_id="user", session_id=session_id, new_message=user_message,
@@ -213,6 +215,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
                             "is_thought": bool(is_thought),
                         })
                     else:
+                        final_response_text = part.text
                         await event_bus.emit("task_event", {
                             "task_id": task_id,
                             "event_type": "agent_response",
@@ -317,6 +320,15 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
             "task_id": task_id,
             "status": "success",
         })
+
+        # Send final result to the task's channel
+        if final_response_text and interaction_broker:
+            await interaction_broker.notify_channel(
+                channel=task_channel,
+                message=final_response_text,
+                context_id=task_id,
+                metadata={"task_id": task_id, "status": "completed"},
+            )
 
     except AgentSuspended as suspended:
         logger.info(
