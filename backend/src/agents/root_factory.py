@@ -108,6 +108,8 @@ class RootAgentManager:
         pending_interactions: dict | None = None,
         event_bus: Any | None = None,
         instance_id: str | None = None,
+        interaction_broker: Any | None = None,
+        channel: str = "web_ui",
     ) -> LoopAgent:
         """Build a LoopAgent from a root-agent definition.
 
@@ -140,6 +142,8 @@ class RootAgentManager:
                 task_id=task_id,
                 pending_interactions=pending_interactions,
                 event_bus=event_bus,
+                interaction_broker=interaction_broker,
+                channel=channel,
             )
             sub_agents.append(agent)
 

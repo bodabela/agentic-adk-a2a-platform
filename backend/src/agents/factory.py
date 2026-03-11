@@ -71,6 +71,8 @@ class AgentFactory:
         event_bus: Any | None = None,
         peer_agents: list[Agent] | None = None,
         context_type: str = "task",
+        interaction_broker: Any | None = None,
+        channel: str = "web_ui",
     ) -> Agent:
         """Create an ADK Agent from its YAML definition.
 
@@ -83,13 +85,19 @@ class AgentFactory:
         task_id:
             Required when the agent uses the ``ask_user`` builtin tool.
         pending_interactions:
-            Dict to store asyncio.Future objects for ask_user.
+            Legacy: Dict to store asyncio.Future objects for ask_user.
+            Deprecated in favor of ``interaction_broker``.
         event_bus:
             EventBus for emitting interaction events (falls back to factory default).
         peer_agents:
             List of already-created peer Agent instances. When provided, the
             agent's instruction is enriched with peer descriptions so it knows
             who it can transfer_to directly.
+        interaction_broker:
+            InteractionBroker instance for persistent, channel-agnostic interactions.
+            When provided, ask_user uses the broker instead of raw asyncio.Future.
+        channel:
+            Target channel for interactions (e.g. "web_ui", "teams", "whatsapp").
         """
         defn = self._agent_defs.get(name)
         if not defn:
@@ -98,7 +106,10 @@ class AgentFactory:
 
         model = model_override or defn.model
         instruction = resolve_instruction(defn, self._agents_dir)
-        tools = self._build_tools(defn, task_id, pending_interactions, event_bus, context_type)
+        tools = self._build_tools(
+            defn, task_id, pending_interactions, event_bus, context_type,
+            interaction_broker=interaction_broker, channel=channel,
+        )
         config = self._build_generate_config(defn)
 
         # Inject peer agent awareness into instruction
@@ -126,6 +137,8 @@ class AgentFactory:
         pending_interactions: dict | None,
         event_bus_override: Any | None,
         context_type: str = "task",
+        interaction_broker: Any | None = None,
+        channel: str = "web_ui",
     ) -> list:
         tools: list = []
         event_bus = event_bus_override or self._event_bus
@@ -140,6 +153,7 @@ class AgentFactory:
         for builtin_name in defn.tools.builtin:
             tool = self._resolve_builtin(
                 builtin_name, task_id, pending_interactions, event_bus, context_type,
+                interaction_broker=interaction_broker, channel=channel,
             )
             if tool:
                 tools.append(tool)
@@ -185,12 +199,19 @@ class AgentFactory:
         pending_interactions: dict | None,
         event_bus: Any | None,
         context_type: str = "task",
+        interaction_broker: Any | None = None,
+        channel: str = "web_ui",
     ):
         if name == "exit_loop":
             from google.adk.tools.exit_loop_tool import exit_loop
             return exit_loop
 
         if name == "ask_user":
+            # Prefer broker-based ask_user if broker is available
+            if interaction_broker:
+                return self._create_ask_user_tool_broker(
+                    task_id, interaction_broker, context_type, channel,
+                )
             return self._create_ask_user_tool(task_id, pending_interactions, event_bus, context_type)
 
         logger.warning("unknown_builtin_tool", name=name)
@@ -273,6 +294,77 @@ class AgentFactory:
 
             logger.info("ask_user_response_received", task_id=_task_id, interaction_id=interaction_id)
             return str(response) if isinstance(response, str) else json.dumps(response)
+
+        return ask_user
+
+    def _create_ask_user_tool_broker(
+        self,
+        task_id: str | None,
+        broker: Any,
+        context_type: str = "task",
+        channel: str = "web_ui",
+    ):
+        """Create ask_user using InteractionBroker for persistent, multi-channel interactions."""
+        if not task_id:
+            logger.warning("ask_user_broker_skipped", reason="missing task_id")
+            return None
+
+        _broker = broker
+        _context_id = task_id
+        _context_type = context_type
+        _channel = channel
+
+        async def ask_user(
+            question: str,
+            question_type: str = "free_text",
+            options: list[str] | None = None,
+        ) -> str:
+            """Ask the human user a question and wait for their response.
+
+            Use this tool to get clarification, preferences, or decisions from the user.
+            The question is delivered through the configured communication channel
+            (browser, Teams, WhatsApp, etc.).
+
+            Args:
+                question: The question to ask the user.
+                question_type: One of "free_text", "choice", or "confirmation".
+                options: For "choice" type, the list of options to present.
+
+            Returns:
+                The user's response as a string.
+            """
+            options_payload = None
+            if question_type == "choice" and options:
+                options_payload = [{"id": opt, "label": opt} for opt in options]
+
+            interaction_id = await _broker.create_interaction(
+                context_id=_context_id,
+                context_type=_context_type,
+                interaction_type=question_type,
+                prompt=question,
+                options=options_payload,
+                channel=_channel,
+                metadata={"agent": "ask_user"},
+            )
+
+            logger.info(
+                "ask_user_broker_waiting",
+                context_id=_context_id,
+                interaction_id=interaction_id,
+                channel=_channel,
+            )
+
+            # Wait with suspension support for external channels
+            suspend_on_timeout = _channel != "web_ui"
+            response = await _broker.wait_for_response(
+                interaction_id,
+                timeout=300,
+                suspend_on_timeout=suspend_on_timeout,
+                context_id=_context_id,
+            )
+
+            logger.info("ask_user_broker_response", context_id=_context_id, interaction_id=interaction_id)
+            return response
 
         return ask_user
 

@@ -27,13 +27,14 @@ export interface TaskPendingInteraction {
   interaction_type: string;
   prompt: string;
   options?: InteractionOption[];
+  channel?: string;
 }
 
 interface TaskStore {
   tasks: Record<string, Task>;
   activeTaskId: string | null;
   pendingInteractions: TaskPendingInteraction[];
-  submitTask: (description: string, rootAgentDefinition?: string) => Promise<string>;
+  submitTask: (description: string, rootAgentDefinition?: string, channel?: string) => Promise<string>;
   addEvent: (taskId: string, event: TaskEvent) => void;
   appendStreamingText: (taskId: string, text: string, agent: string, isThought: boolean, model?: string) => void;
   setActiveTask: (taskId: string | null) => void;
@@ -47,9 +48,10 @@ export const useTaskStore = create<TaskStore>((set) => ({
   activeTaskId: null,
   pendingInteractions: [],
 
-  submitTask: async (description: string, rootAgentDefinition?: string) => {
+  submitTask: async (description: string, rootAgentDefinition?: string, channel?: string) => {
     const body: Record<string, unknown> = { description };
     if (rootAgentDefinition) body.root_agent_definition = rootAgentDefinition;
+    if (channel) body.channel = channel;
     const res = await fetch('/api/tasks/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

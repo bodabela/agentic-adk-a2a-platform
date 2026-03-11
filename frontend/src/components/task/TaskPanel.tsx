@@ -12,7 +12,7 @@ function TaskInteractionForm({ interaction, onResolved }: {
   const [freeText, setFreeText] = useState('');
 
   const submitResponse = async (response: unknown) => {
-    await fetch('/api/tasks/interact', {
+    await fetch('/api/interactions/respond', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -23,6 +23,10 @@ function TaskInteractionForm({ interaction, onResolved }: {
     onResolved(interaction.interaction_id);
   };
 
+  const channelLabel = interaction.channel && interaction.channel !== 'web_ui'
+    ? interaction.channel
+    : null;
+
   return (
     <div
       style={{
@@ -32,8 +36,20 @@ function TaskInteractionForm({ interaction, onResolved }: {
         padding: '1rem',
       }}
     >
-      <div style={{ color: '#e2e8f0', marginBottom: '0.75rem' }}>
-        {interaction.prompt || 'The agent has a question. Please provide more details.'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#e2e8f0', marginBottom: '0.75rem' }}>
+        <span>{interaction.prompt || 'The agent has a question. Please provide more details.'}</span>
+        {channelLabel && (
+          <span style={{
+            fontSize: '0.85rem',
+            padding: '0.1rem 0.4rem',
+            borderRadius: 4,
+            background: '#1e3a5f',
+            color: '#60a5fa',
+            fontWeight: 600,
+          }}>
+            via {channelLabel}
+          </span>
+        )}
       </div>
 
       {interaction.options && interaction.options.length > 0 ? (

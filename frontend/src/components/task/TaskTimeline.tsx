@@ -200,6 +200,7 @@ function eventStyle(eventType: string): { color: string; border: string } {
   if (eventType.includes('tool_result')) return { color: '#34d399', border: '#064e3b' };
   if (eventType === 'streaming_text') return { color: '#22d3ee', border: '#164e63' };
   if (eventType === 'agent_response') return { color: '#e2e8f0', border: '#334155' };
+  if (eventType.includes('suspended')) return { color: '#fb923c', border: '#431407' };
   if (eventType.includes('completed') || eventType.includes('success')) return { color: '#4ade80', border: '#064e3b' };
   if (eventType.includes('failed') || eventType.includes('error')) return { color: '#f87171', border: '#7f1d1d' };
   return { color: '#60a5fa', border: '#1e293b' };

@@ -113,6 +113,7 @@ async def start_flow(req: FlowStartRequest, request: Request):
         runtime_model=req.model,
         agent_factory=request.app.state.agent_factory,
         session_manager=request.app.state.session_manager,
+        interaction_broker=getattr(request.app.state, "interaction_broker", None),
     )
 
     _active_engines[flow.name] = engine

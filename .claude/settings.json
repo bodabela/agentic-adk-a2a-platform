@@ -76,7 +76,16 @@
       "Bash(python3 -c \"import sys; print\\(''''\\\\n''''.join\\(sys.path\\)\\)\")",
       "Bash(python3 -m pip show google-cloud-adk)",
       "Bash(python3 -m pip show google-adk)",
-      "Bash(python -c \"import google.adk; print\\(google.adk.__file__\\)\")"
+      "Bash(python -c \"import google.adk; print\\(google.adk.__file__\\)\")",
+      "Bash(python -c \"from src.interactions.models import Interaction, AgentSuspended; from src.interactions.store import InteractionStore; from src.interactions.broker import InteractionBroker; from src.interactions.channels.base import ChannelAdapter; from src.interactions.channels.web_ui import WebUIChannel; print\\(''All imports OK''\\)\")",
+      "Bash(python -c \"from src.api.interactions import router; from src.api.tasks import router as tr; from src.api.flows import router as fr; print\\(''API imports OK''\\)\")",
+      "Bash(python -c \"from src.main import app; print\\(''Main app OK''\\)\")",
+      "Read(//dev/**)",
+      "Bash(tail -50 *.log)",
+      "Bash(curl -s http://localhost:8000/api/interactions/pending?channel=whatsapp)"
+    ],
+    "additionalDirectories": [
+      "c:\\@projects\\gen-ai-is-builder-2\\backend\\src\\interactions"
     ]
   }
 }

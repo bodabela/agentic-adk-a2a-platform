@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from src.common.logging import get_logger
+from src.interactions.models import AgentSuspended
 
 logger = get_logger("tasks")
 
@@ -24,6 +25,7 @@ class TaskSubmission(BaseModel):
     context: dict | None = None
     root_agent_definition: str | None = None    # which root-agent def to use
     root_agent_instance_id: str | None = None   # or which running instance
+    channel: str | None = None                  # interaction channel override
 
 
 class TaskResponse(BaseModel):
@@ -109,6 +111,7 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
         if not def_name:
             raise ValueError("No root-agent definitions available")
 
+        interaction_broker = getattr(request.app.state, "interaction_broker", None)
         root_agent = root_manager.create_root_agent(
             def_name,
             model_override=default_model,
@@ -116,6 +119,8 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
             pending_interactions=_pending_interactions,
             event_bus=event_bus,
             instance_id=submission.root_agent_instance_id,
+            interaction_broker=interaction_broker,
+            channel=submission.channel or "web_ui",
         )
         logger.info("task_agent_created", task_id=task_id, agent=root_agent.name)
 
@@ -312,6 +317,21 @@ async def _execute_task(task_id: str, submission: TaskSubmission, request: Reque
             "task_id": task_id,
             "status": "success",
         })
+
+    except AgentSuspended as suspended:
+        logger.info(
+            "task_agent_suspended",
+            task_id=task_id,
+            interaction_id=suspended.interaction_id,
+        )
+        await event_bus.emit("task_event", {
+            "task_id": task_id,
+            "event_type": "agent_suspended",
+            "interaction_id": suspended.interaction_id,
+            "text": f"Agent suspended — waiting for response on interaction {suspended.interaction_id[:8]}...",
+        })
+        # Don't emit task_failed — task is paused, not failed
+        # Session state is preserved; agent will resume when response arrives
 
     except Exception as e:
         tb = traceback.format_exc()

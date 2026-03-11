@@ -13,13 +13,16 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from src.config import Settings
-from src.api import health, tasks, flows, events, llm, agents, root_agents
+from src.api import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api
 from src.events.bus import EventBus
 from src.cost.tracker import CostTracker
 from src.llm.config import load_llm_config
 from src.agents.factory import AgentFactory
 from src.agents.root_factory import RootAgentManager
 from src.agents.session_manager import SessionManager
+from src.interactions.store import InteractionStore
+from src.interactions.broker import InteractionBroker
+from src.interactions.channels.web_ui import WebUIChannel
 from src.common.logging import setup_logging
 
 settings = Settings()
@@ -62,7 +65,43 @@ async def lifespan(app: FastAPI):
     agent_factory.load_definitions()
     app.state.agent_factory = agent_factory
 
-    app.state.session_manager = SessionManager()
+    session_manager = SessionManager()
+    app.state.session_manager = session_manager
+
+    # Interaction broker with channel adapters
+    interaction_store = InteractionStore(db_path=settings.interactions_db)
+    interaction_broker = InteractionBroker(store=interaction_store)
+
+    # Always register WebUI channel
+    web_ui_channel = WebUIChannel(event_bus=app.state.event_bus)
+    interaction_broker.register_channel(web_ui_channel)
+
+    # Teams channel (if configured)
+    if settings.teams_enabled:
+        from src.interactions.channels.teams import TeamsChannel
+        teams_channel = TeamsChannel(
+            app_id=settings.teams_app_id,
+            app_password=settings.teams_app_password,
+            service_url=settings.teams_service_url,
+            default_conversation_id=settings.teams_default_conversation_id,
+            broker=interaction_broker,
+        )
+        interaction_broker.register_channel(teams_channel)
+        await teams_channel.setup_routes(app)
+
+    # WhatsApp channel (if configured)
+    if settings.whatsapp_enabled:
+        from src.interactions.channels.whatsapp import WhatsAppChannel
+        whatsapp_channel = WhatsAppChannel(
+            account_sid=settings.whatsapp_account_sid,
+            auth_token=settings.whatsapp_auth_token,
+            from_number=settings.whatsapp_from_number,
+            allowed_numbers=settings.whatsapp_allowed_numbers,
+            broker=interaction_broker,
+        )
+        interaction_broker.register_channel(whatsapp_channel)
+
+    app.state.interaction_broker = interaction_broker
 
     root_agent_manager = RootAgentManager(
         agent_factory=agent_factory,
@@ -76,6 +115,7 @@ async def lifespan(app: FastAPI):
 
     yield
     # Shutdown
+    interaction_store.close()
     await app.state.event_bus.shutdown()
 
 
@@ -95,3 +135,5 @@ app.include_router(events.router, prefix="/api/events", tags=["events"])
 app.include_router(llm.router, prefix="/api/llm", tags=["llm"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(root_agents.router, prefix="/api/root-agents", tags=["root-agents"])
+app.include_router(interactions_api.router, prefix="/api/interactions", tags=["interactions"])
+app.include_router(interactions_api._whatsapp_router, prefix="/api", tags=["channels-whatsapp"])

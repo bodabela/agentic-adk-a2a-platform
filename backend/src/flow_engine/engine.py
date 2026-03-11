@@ -53,6 +53,8 @@ class FlowEngine:
         runtime_model: str | None = None,
         agent_factory: AgentFactory | None = None,
         session_manager: SessionManager | None = None,
+        interaction_broker: Any | None = None,
+        channel: str = "web_ui",
     ):
         self.event_bus = event_bus
         self.cost_tracker = cost_tracker
@@ -62,6 +64,8 @@ class FlowEngine:
         self.runtime_model = runtime_model
         self.agent_factory = agent_factory
         self.session_manager = session_manager
+        self._interaction_broker = interaction_broker
+        self._channel = channel
         self._pending_interactions: dict[str, asyncio.Future] = {}
 
     async def validate_agent_requirements(self, flow: ParsedFlow) -> list[str]:
@@ -439,6 +443,8 @@ class FlowEngine:
             pending_interactions=self._pending_interactions,
             event_bus=self.event_bus,
             context_type="flow",
+            interaction_broker=getattr(self, "_interaction_broker", None),
+            channel=getattr(self, "_channel", "web_ui"),
         )
 
         # Get or create session for this flow + agent combination

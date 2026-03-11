@@ -75,6 +75,7 @@ export function useSSE() {
         interaction_type: data.interaction_type,
         prompt: data.prompt,
         options: data.options,
+        channel: data.channel,
       });
     });
 
