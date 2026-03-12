@@ -106,6 +106,12 @@ echo   Backend API:  http://localhost:8000
 echo   Swagger UI:   http://localhost:8000/docs
 echo   SSE Stream:   http://localhost:8000/api/events/stream
 echo.
+echo   Observability:
+echo     Grafana:      http://localhost:3000  (admin/admin)
+echo     Prometheus:   http://localhost:9090
+echo     Langfuse:     http://localhost:3001
+echo     Tempo:        http://localhost:3200
+echo.
 echo   Hot reload:
 echo     - Backend:  edit backend/src/ ^-^> uvicorn auto-restarts
 echo     - Frontend: edit frontend/src/ ^-^> Vite HMR refreshes browser

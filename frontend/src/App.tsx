@@ -8,6 +8,7 @@ import { AgentsPage } from './features/agents/AgentsPage';
 import { RootAgentsPage } from './features/root-agents/RootAgentsPage';
 import { ToolsPage } from './features/tools/ToolsPage';
 import { SessionsPage } from './features/sessions/SessionsPage';
+import { TracePage } from './features/traces/TracePage';
 import { useSSE } from './shared/hooks/useSSE';
 
 function AppContent() {
@@ -24,6 +25,7 @@ function AppContent() {
         <Route path="/tools" element={<ToolsPage />} />
         <Route path="/sessions" element={<SessionsPage />} />
         <Route path="/costs" element={<CostsPage />} />
+        <Route path="/trace/:traceId" element={<TracePage />} />
       </Routes>
     </AppShell>
   );

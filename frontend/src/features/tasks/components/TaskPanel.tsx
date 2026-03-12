@@ -165,7 +165,7 @@ export function TaskPanel() {
         )}
 
         {activeTask && activeTask.events.length > 0 && (
-          <TaskAgentDiagram events={activeTask.events} status={activeTask.status} />
+          <TaskAgentDiagram events={activeTask.events} status={activeTask.status} taskId={activeTask.task_id} traceId={activeTask.traceId} />
         )}
 
         {activeTask && activeTask.notifications.length > 0 && (

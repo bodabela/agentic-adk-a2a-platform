@@ -18,6 +18,14 @@ services:
       - APP_WORKSPACE_DIR=/workspace
       - APP_ADK_SESSIONS_DB=/data/adk/sessions.db
       - APP_CORS_ORIGINS=["http://localhost:5173"]
+      - APP_TRACING_ENABLED=true
+      - APP_OTLP_ENDPOINT=http://tempo:4317
+      - APP_LANGFUSE_ENABLED=true
+      - APP_LANGFUSE_HOST=http://langfuse:3000
+      - APP_LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - APP_LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - APP_GRAFANA_BASE_URL=http://localhost:3000
+      - APP_LANGFUSE_BASE_URL=http://localhost:3001
     volumes:
       - ./projects/${APP_PROJECT:-personal_assistant}:/project:ro
       - ./config:/config:ro
@@ -42,8 +50,78 @@ services:
     networks:
       - agent-net
 
+  # --- Observability Stack ---
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infra/tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "4317:4317"
+      - "3200:3200"
+    networks:
+      - agent-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - agent-net
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+      - prometheus
+    networks:
+      - agent-net
+
+  langfuse-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-db-data:/var/lib/postgresql/data
+    networks:
+      - agent-net
+
+  langfuse:
+    image: langfuse/langfuse:2
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: changeme-agent-platform-secret
+      NEXTAUTH_URL: http://localhost:3001
+      SALT: changeme-agent-platform-salt
+    ports:
+      - "3001:3000"
+    depends_on:
+      - langfuse-db
+    networks:
+      - agent-net
+
 volumes:
   adk-data:
+  tempo-data:
+  prometheus-data:
+  grafana-data:
+  langfuse-db-data:
 
 networks:
   agent-net:

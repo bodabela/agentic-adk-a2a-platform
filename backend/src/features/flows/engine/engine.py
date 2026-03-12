@@ -5,12 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 logger = logging.getLogger("flow_engine")
+
+from src.shared.tracing.context import start_flow_span, start_state_span, inject_trace_to_event
+from src.shared.tracing.metrics import record_flow_duration, record_llm_metrics, record_tool_metrics
 
 from src.shared.cost.tracker import CostTracker
 from src.shared.events.bus import EventBus
@@ -90,6 +94,7 @@ class FlowEngine:
     ) -> dict[str, Any]:
         """Execute a flow from start to completion."""
         flow_id = str(uuid.uuid4())
+        flow_start_time = time.monotonic()
         context = FlowContext(trigger_input=trigger_input)
         retry_mgr = RetryManager(flow.config)
         parallel_exec = ParallelExecutor(flow.config.max_parallel_branches)
@@ -112,13 +117,17 @@ class FlowEngine:
                 {"flow_id": flow_id, "issues": preflight_issues},
             )
 
+        # Open root trace span for the flow
+        _flow_span_cm = start_flow_span(flow_id, flow.name)
+        _flow_span = _flow_span_cm.__enter__()
+
         await self.event_bus.emit(
-            "flow_started", {
+            "flow_started", inject_trace_to_event({
                 "flow_id": flow_id,
                 "flow_name": flow.name,
                 "provider": self.runtime_provider or flow.config.provider or "",
                 "model": self.runtime_model or flow.config.get_effective_model() or "",
-            }
+            })
         )
 
         current_state = flow.get_initial_state()
@@ -132,23 +141,24 @@ class FlowEngine:
             await self.state_store.save(exec_state)
             await self.event_bus.emit(
                 "flow_state_entered",
-                {
+                inject_trace_to_event({
                     "flow_id": flow_id,
                     "state": current_state,
                     "node_type": node.type,
-                },
+                }),
             )
 
             try:
-                next_state = await self._execute_node(
-                    node,
-                    current_state,
-                    context,
-                    flow,
-                    retry_mgr,
-                    parallel_exec,
-                    flow_id,
-                )
+                with start_state_span(flow_id, current_state, node.type):
+                    next_state = await self._execute_node(
+                        node,
+                        current_state,
+                        context,
+                        flow,
+                        retry_mgr,
+                        parallel_exec,
+                        flow_id,
+                    )
             except RetryLimitExceeded as e:
                 await self.event_bus.emit(
                     "flow_retry_exceeded",
@@ -206,6 +216,13 @@ class FlowEngine:
                 break
 
             current_state = next_state
+
+        # Close flow trace span and record duration
+        record_flow_duration(flow_id, flow.name, int((time.monotonic() - flow_start_time) * 1000))
+        try:
+            _flow_span_cm.__exit__(None, None, None)
+        except Exception:
+            pass
 
         return {
             "flow_id": flow_id,

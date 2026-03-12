@@ -693,7 +693,7 @@ export function FlowsPage() {
               Loading flow diagram...
             </div>
           ) : flowDefinition ? (
-            <FlowDiagram definition={flowDefinition} activeState={activeState} previousState={previousState} flowStatus={matchingFlow?.status} toolUsageByState={toolUsageByState} agentModels={agentModels} />
+            <FlowDiagram definition={flowDefinition} activeState={activeState} previousState={previousState} flowStatus={matchingFlow?.status} toolUsageByState={toolUsageByState} agentModels={agentModels} flowId={matchingFlow?.flowId} traceId={matchingFlow?.traceId} />
           ) : (
             <div style={{
               color: '#475569',

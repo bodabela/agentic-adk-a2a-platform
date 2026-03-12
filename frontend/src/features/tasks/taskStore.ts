@@ -15,6 +15,7 @@ interface Task {
   error?: string;
   notifications: string[];
   finalResult?: string;
+  traceId?: string;
 }
 
 interface InteractionOption {
@@ -45,6 +46,7 @@ interface TaskStore {
   addNotification: (taskId: string, message: string) => void;
   addInteraction: (interaction: TaskPendingInteraction) => void;
   resolveInteraction: (interactionId: string) => void;
+  setTraceId: (taskId: string, traceId: string) => void;
 }
 
 export const useTaskStore = create<TaskStore>((set) => ({
@@ -167,4 +169,16 @@ export const useTaskStore = create<TaskStore>((set) => ({
         (i) => i.interaction_id !== interactionId,
       ),
     })),
+
+  setTraceId: (taskId, traceId) =>
+    set((state) => {
+      const task = state.tasks[taskId];
+      if (!task || task.traceId) return state;
+      return {
+        tasks: {
+          ...state.tasks,
+          [taskId]: { ...task, traceId },
+        },
+      };
+    }),
 }));

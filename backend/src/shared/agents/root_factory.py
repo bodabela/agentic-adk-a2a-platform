@@ -169,6 +169,12 @@ class RootAgentManager:
                 thinking_config=genai_types.ThinkingConfig(include_thoughts=True),
             )
 
+        # Inject OTel tracing callbacks when enabled
+        tracing_kwargs: dict = {}
+        if self._factory._tracing_enabled:
+            from src.shared.tracing.callbacks import make_adk_callbacks
+            tracing_kwargs = make_adk_callbacks()
+
         orchestrator = Agent(
             model=model,
             name="orchestrator",
@@ -177,6 +183,7 @@ class RootAgentManager:
             sub_agents=sub_agents,
             tools=[exit_loop],
             generate_content_config=gen_config,
+            **tracing_kwargs,
         )
 
         return LoopAgent(

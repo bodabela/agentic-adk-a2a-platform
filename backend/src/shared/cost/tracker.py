@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from src.shared.cost.models import CostEvent, TaskCostReport, OperationType, LLMCostDetail, ToolCostDetail
 from src.shared.events.bus import EventBus
+from src.shared.tracing.context import get_current_trace_ids
 
 # Optional: import only for type checking
 from typing import TYPE_CHECKING
@@ -52,11 +53,15 @@ class CostTracker:
         report.total_input_tokens += input_tokens
         report.total_output_tokens += output_tokens
 
+        trace_id, span_id = get_current_trace_ids()
+
         event = CostEvent(
             task_id=task_id,
             module=module,
             agent=agent,
             operation_type=OperationType.LLM_CALL,
+            trace_id=trace_id,
+            span_id=span_id,
             llm=LLMCostDetail(
                 provider=provider,
                 model=model,
@@ -86,11 +91,15 @@ class CostTracker:
         report = self.get_or_create_report(task_id)
         report.tool_invocations += 1
 
+        trace_id, span_id = get_current_trace_ids()
+
         event = CostEvent(
             task_id=task_id,
             module=module,
             agent=agent,
             operation_type=OperationType.TOOL_INVOCATION,
+            trace_id=trace_id,
+            span_id=span_id,
             tool=ToolCostDetail(
                 tool_id=tool_id,
                 tool_source=tool_source,

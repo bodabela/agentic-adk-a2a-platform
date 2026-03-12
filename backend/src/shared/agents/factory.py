@@ -34,11 +34,13 @@ class AgentFactory:
         workspace_dir: Path,
         event_bus: Any | None = None,
         llm_config: Any | None = None,
+        tracing_enabled: bool = False,
     ):
         self._agents_dir = agents_dir
         self._workspace_dir = workspace_dir
         self._event_bus = event_bus
         self._llm_config = llm_config
+        self._tracing_enabled = tracing_enabled
         self._agent_defs: dict[str, AgentDefinition] = {}
 
     # -- lifecycle ----------------------------------------------------------
@@ -116,6 +118,12 @@ class AgentFactory:
         if peer_agents:
             instruction = self._inject_peer_context(instruction, peer_agents)
 
+        # Inject OTel tracing callbacks when enabled
+        tracing_kwargs: dict = {}
+        if self._tracing_enabled:
+            from src.shared.tracing.callbacks import make_adk_callbacks
+            tracing_kwargs = make_adk_callbacks()
+
         return Agent(
             model=model,
             name=defn.name,
@@ -126,6 +134,7 @@ class AgentFactory:
             generate_content_config=config,
             disallow_transfer_to_peers=defn.disallow_transfer_to_peers,
             disallow_transfer_to_parent=defn.disallow_transfer_to_parent,
+            **tracing_kwargs,
         )
 
     # -- private helpers ----------------------------------------------------

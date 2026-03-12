@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { TraceLinks } from '../../../shared/components/TraceLinks';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -676,13 +677,15 @@ function EdgeLine({
 
 /* ── Main component ────────────────────────────────────── */
 
-export function FlowDiagram({ definition, activeState, previousState, flowStatus, toolUsageByState = {}, agentModels = {} }: {
+export function FlowDiagram({ definition, activeState, previousState, flowStatus, toolUsageByState = {}, agentModels = {}, flowId, traceId }: {
   definition: FlowDefinitionData;
   activeState?: string;
   previousState?: string;
   flowStatus?: string;
   toolUsageByState?: Record<string, Record<string, number>>;
   agentModels?: Record<string, { model: string }>;
+  flowId?: string;
+  traceId?: string;
 }) {
   const { edges, positions, width, height } = useMemo(() => {
     const edges = extractEdges(definition.states);
@@ -713,7 +716,10 @@ export function FlowDiagram({ definition, activeState, previousState, flowStatus
         gap: '0.5rem',
       }}>
         <div>
-          <span style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '1.1rem' }}>{definition.name}</span>
+          <span style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '1.1rem', display: 'inline-flex', alignItems: 'center' }}>
+            {definition.name}
+            {flowId && <TraceLinks traceId={traceId} entityType="flow" entityId={flowId} />}
+          </span>
           {definition.description && (
             <div style={{ color: '#64748b', fontSize: '0.85rem', marginTop: 2 }}>{definition.description}</div>
           )}

@@ -8,6 +8,8 @@ from fastapi import Request
 
 from src.shared.logging import get_logger
 from src.shared.interactions.models import AgentSuspended
+from src.shared.tracing.context import start_task_span, inject_trace_to_event
+from src.shared.tracing.metrics import record_llm_metrics, record_task_duration
 
 logger = get_logger("tasks")
 
@@ -21,8 +23,14 @@ running_tasks: dict[str, asyncio.Task] = {}
 async def execute_task(task_id: str, submission, request: Request):
     """Run the root agent to process the task."""
     event_bus = request.app.state.event_bus
+    tracing_enabled = getattr(request.app.state.settings, "tracing_enabled", False)
+    task_start_time = time.monotonic()
 
     logger.info("task_execution_start", task_id=task_id, description=submission.description)
+
+    # Open a root trace span for the entire task execution
+    _span_cm = start_task_span(task_id, submission.description) if tracing_enabled else None
+    _span = _span_cm.__enter__() if _span_cm else None
 
     try:
         from google.adk.runners import Runner
@@ -110,7 +118,7 @@ async def execute_task(task_id: str, submission, request: Request):
                 output_tokens = usage.candidates_token_count or 0
                 model_version = getattr(event, "model_version", None) or default_model
                 try:
-                    await cost_tracker.record_llm_call(
+                    cost_event = await cost_tracker.record_llm_call(
                         task_id=task_id,
                         module=author or "root_agent",
                         agent=author or "root_agent",
@@ -120,6 +128,16 @@ async def execute_task(task_id: str, submission, request: Request):
                         latency_ms=latency,
                         provider=default_provider,
                     )
+                    if tracing_enabled:
+                        record_llm_metrics(
+                            model=model_version,
+                            provider=default_provider,
+                            agent=author or "root_agent",
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            latency_ms=latency,
+                            cost_usd=cost_event.llm.total_cost_usd if cost_event.llm else 0,
+                        )
                 except Exception as cost_err:
                     logger.warning("cost_tracking_failed", error=str(cost_err))
 
@@ -133,7 +151,7 @@ async def execute_task(task_id: str, submission, request: Request):
                         if hasattr(part, "function_call") and part.function_call:
                             continue  # skip partial function_call arg streaming
                         is_thought = getattr(part, "thought", False)
-                        await event_bus.emit("task_event", {
+                        await event_bus.emit("task_event", inject_trace_to_event({
                             "task_id": task_id,
                             "event_type": "streaming_text",
                             "agent": author,
@@ -141,7 +159,7 @@ async def execute_task(task_id: str, submission, request: Request):
                             "model": default_model,
                             "text": part.text,
                             "is_thought": bool(is_thought),
-                        })
+                        }))
                         await asyncio.sleep(0)
                 continue
 
@@ -271,10 +289,14 @@ async def execute_task(task_id: str, submission, request: Request):
             channel=task_channel,
             has_broker=bool(interaction_broker),
         )
-        await event_bus.emit("task_completed", {
+        # Record task duration metric
+        if tracing_enabled:
+            record_task_duration(task_id, int((time.monotonic() - task_start_time) * 1000))
+
+        await event_bus.emit("task_completed", inject_trace_to_event({
             "task_id": task_id,
             "status": "success",
-        })
+        }))
 
         # Send final result to the task's channel
         if final_response_text and interaction_broker:
@@ -333,6 +355,12 @@ async def execute_task(task_id: str, submission, request: Request):
             "error": f"[{error_type}] {error_msg}",
         })
     finally:
+        # Close trace span
+        if _span_cm:
+            try:
+                _span_cm.__exit__(None, None, None)
+            except Exception:
+                pass
         # Clean up running task reference
         running_tasks.pop(task_id, None)
         # Clean up any orphaned pending interactions

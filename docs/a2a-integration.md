@@ -22,25 +22,7 @@ Jelenleg a thinking output sima szövegként streamelődik a `thinking` SSE even
 - `backend/src/flow_engine/engine.py` — strukturált thinking feldolgozás
 - Frontend — thinking vizualizáció frissítése
 
-### 2. Új Agent hozzáadása
-
-**Prioritás:** Magas | **Jelenlegi állapot:** Részleges
-
-A rendszer jelenleg két modult tartalmaz (`coder_agent`, `user_agent`). A moduláris A2A architektúra lehetővé teszi további specializált agentek bevezetését:
-
-- Új modul könyvtár létrehozása a `modules/` alatt a meglévő struktúra mintájára
-- `module.yaml` konfiguráció saját A2A host/port beállításokkal
-- `agent_card.json` az új agent képességeivel, skill-jeivel és `protocolVersion` mezővel
-- `serve_a2a.py` A2A server az összes standard endpoint-tal
-- Agent regisztráció az `AgentRegistry`-ben automatikusan megtörténik a discovery során
-- Flow definíciók bővítése az új agent task node-jaival
-
-**Érintett fájlok:**
-- `modules/<new_agent>/` — teljes modul struktúra
-- `backend/src/flow_engine/` — flow definíciók bővítése
-- `backend/src/orchestrator/agent_registry.py` — automatikus discovery (már támogatott)
-
-### 3. Agent-to-Agent capability negotiation
+### 2. Agent-to-Agent capability negotiation
 
 **Prioritás:** Közepes | **Jelenlegi állapot:** Implementált (Flows), Részleges (Tasks)
 

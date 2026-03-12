@@ -16,6 +16,7 @@ interface FlowState {
   states: Record<string, { status: string; output?: unknown }>;
   output?: Record<string, unknown>;
   events: FlowEvent[];
+  traceId?: string;
 }
 
 interface InteractionOption {
@@ -50,6 +51,7 @@ interface FlowStore {
   addInteraction: (interaction: PendingInteraction) => void;
   resolveInteraction: (interactionId: string) => void;
   startFlow: (flowFile: string, input: Record<string, unknown>, provider?: string, model?: string, channel?: string) => Promise<void>;
+  setFlowTraceId: (flowId: string, traceId: string) => void;
 }
 
 export const useFlowStore = create<FlowStore>((set) => ({
@@ -114,6 +116,18 @@ export const useFlowStore = create<FlowStore>((set) => ({
         (i) => i.interaction_id !== interactionId,
       ),
     })),
+
+  setFlowTraceId: (flowId, traceId) =>
+    set((state) => {
+      const flow = state.activeFlows[flowId];
+      if (!flow || flow.traceId) return state;
+      return {
+        activeFlows: {
+          ...state.activeFlows,
+          [flowId]: { ...flow, traceId },
+        },
+      };
+    }),
 
   startFlow: async (flowFile, input, provider?, model?, channel?) => {
     const body: Record<string, unknown> = { flow_file: flowFile, input, provider, model };

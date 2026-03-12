@@ -27,10 +27,12 @@ export function useSSE() {
   const addTaskInteraction = useTaskStore((s) => s.addInteraction);
   const setTaskFinalResult = useTaskStore((s) => s.setFinalResult);
   const addTaskNotification = useTaskStore((s) => s.addNotification);
+  const setTaskTraceId = useTaskStore((s) => s.setTraceId);
   const updateFlowState = useFlowStore((s) => s.updateFlowState);
   const addFlowEvent = useFlowStore((s) => s.addFlowEvent);
   const appendFlowStreamingText = useFlowStore((s) => s.appendFlowStreamingText);
   const addInteraction = useFlowStore((s) => s.addInteraction);
+  const setFlowTraceId = useFlowStore((s) => s.setFlowTraceId);
   const addCostEvent = useCostStore((s) => s.addCostEvent);
 
   const connect = useCallback(() => {
@@ -42,6 +44,10 @@ export function useSSE() {
 
     es.addEventListener('task_event', (e) => {
       const data = JSON.parse(e.data);
+      // Capture trace_id from the first event that carries it
+      if (data.trace_id && data.task_id) {
+        setTaskTraceId(data.task_id, data.trace_id);
+      }
       if (data.event_type === 'streaming_text') {
         appendTaskStreamingText(
           data.task_id,
@@ -61,6 +67,9 @@ export function useSSE() {
 
     es.addEventListener('task_completed', (e) => {
       const data = JSON.parse(e.data);
+      if (data.trace_id && data.task_id) {
+        setTaskTraceId(data.task_id, data.trace_id);
+      }
       updateTaskStatus(data.task_id, 'completed');
     });
 
@@ -107,6 +116,11 @@ export function useSSE() {
         const data = JSON.parse(e.data);
         const flowId = data.flow_id;
         if (!flowId) return;
+
+        // Capture trace_id from the first flow event that carries it
+        if (data.trace_id) {
+          setFlowTraceId(flowId, data.trace_id);
+        }
 
         // Streaming text uses append (typewriter effect)
         if (eventName === 'flow_agent_streaming_text') {
@@ -205,7 +219,7 @@ export function useSSE() {
     };
 
     eventSourceRef.current = es;
-  }, [addTaskEvent, appendTaskStreamingText, updateTaskStatus, addTaskInteraction, setTaskFinalResult, addTaskNotification, updateFlowState, addFlowEvent, appendFlowStreamingText, addInteraction, addCostEvent]);
+  }, [addTaskEvent, appendTaskStreamingText, updateTaskStatus, addTaskInteraction, setTaskFinalResult, addTaskNotification, setTaskTraceId, updateFlowState, addFlowEvent, appendFlowStreamingText, addInteraction, setFlowTraceId, addCostEvent]);
 
   useEffect(() => {
     connect();

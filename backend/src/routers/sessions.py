@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Request
 
 from src.features.tasks.executor import running_tasks
@@ -52,6 +54,61 @@ async def list_sessions(request: Request):
     # Sort: running first, then by update_time descending
     result.sort(key=lambda x: (x["status"] != "running", -(x["update_time"] or 0)))
     return {"sessions": result}
+
+
+def _serialize_event(ev: Any) -> dict:
+    """Convert an ADK session event into a JSON-safe dict."""
+    content = getattr(ev, "content", None)
+    author = getattr(ev, "author", None) or ""
+    timestamp = getattr(ev, "timestamp", None)
+
+    parts_out: list[dict] = []
+    if content and getattr(content, "parts", None):
+        for p in content.parts:
+            if hasattr(p, "text") and p.text:
+                parts_out.append({"type": "text", "text": p.text})
+            elif hasattr(p, "function_call") and p.function_call:
+                fc = p.function_call
+                parts_out.append({
+                    "type": "function_call",
+                    "name": fc.name,
+                    "args": dict(fc.args) if fc.args else {},
+                })
+            elif hasattr(p, "function_response") and p.function_response:
+                fr = p.function_response
+                resp = fr.response
+                if hasattr(resp, "model_dump"):
+                    resp = resp.model_dump()
+                elif not isinstance(resp, (dict, list, str, int, float, bool, type(None))):
+                    resp = str(resp)
+                parts_out.append({
+                    "type": "function_response",
+                    "name": fr.name,
+                    "response": resp,
+                })
+
+    return {
+        "author": author,
+        "timestamp": timestamp,
+        "parts": parts_out,
+    }
+
+
+@router.get(
+    "/{session_id}/events",
+    tags=["Admin: Sessions"],
+    summary="Get session events",
+    description="Returns all events for a specific session, including messages, tool calls, and tool results.",
+    response_description="List of session events with author, timestamp, and content parts.",
+)
+async def get_session_events(session_id: str, request: Request):
+    session_manager = request.app.state.session_manager
+    session = await session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    events = [_serialize_event(ev) for ev in (session.events or [])]
+    return {"session_id": session_id, "events": events}
 
 
 @router.post(

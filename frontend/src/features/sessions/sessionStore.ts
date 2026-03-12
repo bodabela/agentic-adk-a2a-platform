@@ -1,5 +1,19 @@
 import { create } from 'zustand';
 
+export interface SessionEventPart {
+  type: 'text' | 'function_call' | 'function_response';
+  text?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+  response?: unknown;
+}
+
+export interface SessionEvent {
+  author: string;
+  timestamp: number | null;
+  parts: SessionEventPart[];
+}
+
 export interface SessionInfo {
   session_id: string;
   app_name: string;
@@ -13,7 +27,12 @@ export interface SessionInfo {
 interface SessionStore {
   sessions: SessionInfo[];
   loading: boolean;
+  /** session_id → events (loaded on expand) */
+  sessionEvents: Record<string, SessionEvent[]>;
+  /** session_id → loading flag */
+  eventsLoading: Record<string, boolean>;
   fetchSessions: () => Promise<void>;
+  fetchSessionEvents: (sessionId: string) => Promise<void>;
   stopSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
 }
@@ -21,6 +40,8 @@ interface SessionStore {
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
   loading: false,
+  sessionEvents: {},
+  eventsLoading: {},
 
   fetchSessions: async () => {
     set({ loading: true });
@@ -32,6 +53,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       console.error('[Sessions] Failed to fetch');
     } finally {
       set({ loading: false });
+    }
+  },
+
+  fetchSessionEvents: async (sessionId: string) => {
+    set((state) => ({ eventsLoading: { ...state.eventsLoading, [sessionId]: true } }));
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/events`);
+      const data = await res.json();
+      set((state) => ({
+        sessionEvents: { ...state.sessionEvents, [sessionId]: data.events || [] },
+      }));
+    } catch {
+      console.error('[Sessions] Failed to fetch events', sessionId);
+    } finally {
+      set((state) => ({ eventsLoading: { ...state.eventsLoading, [sessionId]: false } }));
     }
   },
 

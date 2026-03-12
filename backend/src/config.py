@@ -61,6 +61,20 @@ class Settings(BaseSettings):
     # Cost
     cost_tracking_enabled: bool = True
 
+    # Tracing / Observability
+    tracing_enabled: bool = True
+    otlp_endpoint: str = "http://tempo:4317"
+
+    # Langfuse
+    langfuse_enabled: bool = False
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "http://langfuse:3000"
+
+    # Dashboard URLs (for frontend deep-links)
+    grafana_base_url: str = "http://localhost:3000"
+    langfuse_base_url: str = "http://localhost:3001"
+
     # CORS (for frontend)
     cors_origins: list[str] = ["http://localhost:5173"]
 

@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from src.config import Settings
-from src.routers import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api, sessions
+from src.routers import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api, sessions, traces
 from src.shared.events.bus import EventBus
 from src.shared.cost.tracker import CostTracker
 from src.shared.llm.config import load_llm_config
@@ -44,6 +44,14 @@ def _prewarm_mcp_deps() -> None:
 async def lifespan(app: FastAPI):
     setup_logging(debug=settings.debug)
 
+    # Tracing / Observability
+    if settings.tracing_enabled:
+        from src.shared.tracing.provider import init_tracing, shutdown_tracing
+        from src.shared.tracing.metrics import init_metrics
+        init_tracing(settings)
+        init_metrics()
+        _log.info("OpenTelemetry tracing and metrics enabled")
+
     # Startup: initialize shared resources
     app.state.settings = settings
     app.state.llm_config = load_llm_config(settings.llm_config_path)
@@ -63,6 +71,7 @@ async def lifespan(app: FastAPI):
         workspace_dir=workspace_dir,
         event_bus=app.state.event_bus,
         llm_config=app.state.llm_config,
+        tracing_enabled=settings.tracing_enabled,
     )
     agent_factory.load_definitions()
     app.state.agent_factory = agent_factory
@@ -118,6 +127,9 @@ async def lifespan(app: FastAPI):
 
     yield
     # Shutdown
+    if settings.tracing_enabled:
+        from src.shared.tracing.provider import shutdown_tracing
+        shutdown_tracing()
     await session_manager.close()
     interaction_store.close()
     await app.state.event_bus.shutdown()
@@ -209,3 +221,24 @@ app.include_router(interactions_api.router, prefix="/api/interactions")
 app.include_router(interactions_api._whatsapp_router, prefix="/api")
 app.include_router(tools_api.router, prefix="/api/tools")
 app.include_router(sessions.router, prefix="/api/sessions")
+app.include_router(traces.router, prefix="/api/traces")
+
+# Prometheus /metrics endpoint
+if settings.tracing_enabled:
+    try:
+        from prometheus_client import REGISTRY, generate_latest, CONTENT_TYPE_LATEST
+        from starlette.responses import Response
+
+        @app.get("/metrics", include_in_schema=False)
+        async def prometheus_metrics():
+            return Response(content=generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
+    except ImportError:
+        _log.warning("prometheus_client not available — /metrics endpoint disabled")
+
+# FastAPI auto-instrumentation (must be after app creation)
+if settings.tracing_enabled:
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        FastAPIInstrumentor.instrument_app(app)
+    except Exception as _exc:
+        _log.warning("FastAPI OTel instrumentation failed: %s", _exc)

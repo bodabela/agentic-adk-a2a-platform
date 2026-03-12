@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { TraceLinks } from '../../../shared/components/TraceLinks';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -467,9 +468,11 @@ function DiagramEdgeLine({ edge, fromPos, toPos, isLatest, taskStatus, pairIndex
 
 /* ── Main component ────────────────────────────────────── */
 
-export function TaskAgentDiagram({ events, status }: {
+export function TaskAgentDiagram({ events, status, taskId, traceId }: {
   events: TaskEvent[];
   status: string;
+  taskId?: string;
+  traceId?: string;
 }) {
   const { nodes, edges, activeAgent, completed, toolUsage } = useMemo(
     () => extractGraph(events),
@@ -512,8 +515,9 @@ export function TaskAgentDiagram({ events, status }: {
         justifyContent: 'space-between',
         alignItems: 'center',
       }}>
-        <span style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '0.95rem' }}>
+        <span style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center' }}>
           Agent Flow
+          {taskId && <TraceLinks traceId={traceId} entityType="task" entityId={taskId} />}
         </span>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           {edges.length > 0 && (
