@@ -1,0 +1,83 @@
+flow:
+  name: "schedule_meeting"
+  version: "1.0.0"
+  description: "Schedule a meeting - check availability, get user confirmation, create event, send invitations"
+
+  trigger:
+    type: "manual"
+    input_schema:
+      type: "object"
+      required: ["title", "attendees"]
+      properties:
+        title:
+          type: "string"
+          description: "Meeting title"
+        attendees:
+          type: "string"
+          description: "Comma-separated attendee names"
+        preferred_date:
+          type: "string"
+          description: "Preferred date in ISO format (e.g. 2026-03-16)"
+        duration_minutes:
+          type: "integer"
+          description: "Meeting duration in minutes (default: 30)"
+
+  config:
+    max_retry_loops: 3
+    timeout_minutes: 15
+    provider: "google"
+    model: "gemini-2.5-flash"
+
+  states:
+    check_availability:
+      type: "agent_task"
+      agent: "calendar_agent"
+      description: "Check availability for all attendees"
+      input:
+        requirement: "Check availability for {{ trigger.preferred_date | default('next week') }} for these attendees: {{ trigger.attendees }}. Find free time slots that work for everyone. Meeting duration: {{ trigger.duration_minutes | default(30) }} minutes."
+      output: [available_slots, conflicts]
+      on_complete: "ask_user_preference"
+      on_error: "handle_error"
+
+    ask_user_preference:
+      type: "human_interaction"
+      interaction_type: "selection"
+      prompt: "Here are the available time slots for '{{ trigger.title }}' with {{ trigger.attendees }}. Please select your preferred time:"
+      questions: "{{ states.check_availability.output.available_slots | default('') }}"
+      on_response: "create_event"
+
+    create_event:
+      type: "agent_task"
+      agent: "calendar_agent"
+      description: "Create the calendar event"
+      input:
+        requirement: "Create a new event with title '{{ trigger.title }}', attendees: {{ trigger.attendees }}, using the selected time: {{ states.ask_user_preference.output.response }}. Duration: {{ trigger.duration_minutes | default(30) }} minutes."
+      output: [event_details, event_id]
+      on_complete: "send_invitations"
+      on_error: "handle_error"
+
+    send_invitations:
+      type: "agent_task"
+      agent: "email_agent"
+      description: "Send meeting invitations"
+      input:
+        requirement: "Send meeting invitation emails to {{ trigger.attendees }} for the event: {{ states.create_event.output.event_details }}. Include the meeting title, time, and any relevant details."
+      output: [emails_sent]
+      on_complete: "complete_success"
+      on_error: "complete_success"
+
+    handle_error:
+      type: "terminal"
+      status: "failed"
+      output:
+        error: "{{ error }}"
+
+    complete_success:
+      type: "terminal"
+      status: "success"
+      output:
+        result: |
+          Meeting '{{ trigger.title }}' scheduled successfully!
+          Event: {{ states.create_event.output.event_details | default('Created') }}
+          Invitations: {{ states.send_invitations.output.emails_sent | default('Sent') }}
+        cost: "{{ flow.cost_report }}"

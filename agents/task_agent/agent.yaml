@@ -1,0 +1,22 @@
+agent:
+  name: "task_agent"
+  version: "0.1.0"
+  description: "Task and project management - tasks, sprints, priorities, project overview"
+  category: "personal_assistant"
+  model: "gemini-2.5-flash"
+  model_fallback: "gemini-2.5-pro"
+  instruction: "prompts/system_prompt.md"
+  output_key: "task_agent_output"
+  capabilities:
+    - "task_management"
+    - "project_overview"
+    - "sprint_management"
+    - "priority_suggestions"
+  generate_content_config:
+    thinking: true
+  tools:
+    mcp:
+      - transport: "stdio"
+        server: "tools/mcp_server.py"
+    builtin:
+      - "send_notification"

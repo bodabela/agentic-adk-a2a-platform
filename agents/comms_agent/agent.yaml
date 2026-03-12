@@ -1,0 +1,22 @@
+agent:
+  name: "comms_agent"
+  version: "0.1.0"
+  description: "Communication management - Slack, Teams messages, channel summaries, important message detection"
+  category: "personal_assistant"
+  model: "gemini-2.5-flash"
+  model_fallback: "gemini-2.5-pro"
+  instruction: "prompts/system_prompt.md"
+  output_key: "comms_agent_output"
+  capabilities:
+    - "message_management"
+    - "channel_summarization"
+    - "message_drafting"
+    - "important_message_detection"
+  generate_content_config:
+    thinking: true
+  tools:
+    mcp:
+      - transport: "stdio"
+        server: "tools/mcp_server.py"
+    builtin:
+      - "send_notification"

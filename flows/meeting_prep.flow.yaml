@@ -1,0 +1,115 @@
+flow:
+  name: "meeting_prep"
+  version: "1.0.0"
+  description: "Prepares a comprehensive brief for upcoming meetings - gathers calendar, research, documents, and email context"
+
+  trigger:
+    type: "manual"
+    input_schema:
+      type: "object"
+      required: ["target_date"]
+      properties:
+        target_date:
+          type: "string"
+          description: "Date to prepare for in ISO format (e.g. 2026-03-13)"
+        focus_meeting:
+          type: "string"
+          description: "Optional specific meeting title to focus on"
+
+  config:
+    max_retry_loops: 3
+    timeout_minutes: 30
+    provider: "google"
+    model: "gemini-2.5-flash"
+
+  states:
+    fetch_calendar:
+      type: "agent_task"
+      agent: "calendar_agent"
+      description: "Fetch calendar events for the target date"
+      input:
+        requirement: "List all events for {{ trigger.target_date }}. Include attendees, times, locations, and descriptions for each event."
+      output: [events_list, event_count]
+      on_complete: "review_calendar"
+      on_error: "handle_error"
+
+    review_calendar:
+      type: "llm_decision"
+      context:
+        - "{{ states.fetch_calendar.output }}"
+      decision_prompt: |
+        Review the calendar events returned by the calendar agent.
+
+        Decision rules:
+        - If events were found (event_count > 0) -> research
+        - If no events were found -> no_meetings
+      transitions:
+        research: "research_attendees"
+        no_meetings: "no_meetings"
+
+    no_meetings:
+      type: "terminal"
+      status: "success"
+      output:
+        result: "No meetings scheduled for {{ trigger.target_date }}. Your day is free!"
+
+    research_attendees:
+      type: "agent_task"
+      agent: "research_agent"
+      description: "Research meeting attendees and topics"
+      input:
+        requirement: "Based on these meetings: {{ states.fetch_calendar.output.events_list }}, prepare brief profiles for key attendees and background on meeting topics. Focus on external attendees and important context."
+      output: [attendee_briefs, topic_background]
+      on_complete: "find_documents"
+      on_error: "find_documents"
+
+    find_documents:
+      type: "agent_task"
+      agent: "document_agent"
+      description: "Find relevant documents for meetings"
+      input:
+        requirement: "Search for documents related to these meetings: {{ states.fetch_calendar.output.events_list }}. Look for agendas, previous meeting notes, project docs, and any relevant materials."
+      output: [relevant_docs, doc_summaries]
+      on_complete: "check_emails"
+      on_error: "check_emails"
+
+    check_emails:
+      type: "agent_task"
+      agent: "email_agent"
+      description: "Find related emails for meetings"
+      input:
+        requirement: "Search for recent emails related to these meetings: {{ states.fetch_calendar.output.events_list }}. Look for agenda updates, pre-read materials, or relevant discussion threads from the attendees."
+      output: [related_emails, email_summaries]
+      on_complete: "compile_brief"
+      on_error: "compile_brief"
+
+    compile_brief:
+      type: "llm_decision"
+      context:
+        - "Calendar events: {{ states.fetch_calendar.output }}"
+        - "Research: {{ states.research_attendees.output | default('Not available') }}"
+        - "Documents: {{ states.find_documents.output | default('Not available') }}"
+        - "Emails: {{ states.check_emails.output | default('Not available') }}"
+      decision_prompt: |
+        All information has been gathered for the meeting prep brief.
+        Always choose "complete" to finalize.
+      transitions:
+        complete: "complete_success"
+
+    handle_error:
+      type: "terminal"
+      status: "failed"
+      output:
+        error: "{{ error }}"
+
+    complete_success:
+      type: "terminal"
+      status: "success"
+      output:
+        result: |
+          Meeting prep brief for {{ trigger.target_date }}:
+          Calendar: {{ states.fetch_calendar.output }}
+          Research: {{ states.research_attendees.output | default('Not available') }}
+          Documents: {{ states.find_documents.output | default('Not available') }}
+          Emails: {{ states.check_emails.output | default('Not available') }}
+        cost: "{{ flow.cost_report }}"

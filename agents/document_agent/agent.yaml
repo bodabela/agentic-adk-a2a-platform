@@ -1,0 +1,22 @@
+agent:
+  name: "document_agent"
+  version: "0.1.0"
+  description: "Document management - search, summarize, Q&A, create from templates"
+  category: "personal_assistant"
+  model: "gemini-2.5-flash"
+  model_fallback: "gemini-2.5-pro"
+  instruction: "prompts/system_prompt.md"
+  output_key: "document_agent_output"
+  capabilities:
+    - "document_search"
+    - "document_summarization"
+    - "document_qa"
+    - "document_creation"
+  generate_content_config:
+    thinking: true
+  tools:
+    mcp:
+      - transport: "stdio"
+        server: "tools/mcp_server.py"
+    builtin:
+      - "send_notification"

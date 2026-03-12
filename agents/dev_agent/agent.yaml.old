@@ -1,12 +1,12 @@
 agent:
-  name: "coder_agent"
+  name: "dev_agent"
   version: "0.1.0"
   description: "Code generation and modification agent"
   category: "development"
   model: "gemini-2.5-flash"
   model_fallback: "gemini-2.5-pro"
   instruction: "prompts/system_prompt.md"
-  output_key: "coder_agent_output"
+  output_key: "dev_agent_output"
   capabilities:
     - "code_generation"
     - "code_modification"

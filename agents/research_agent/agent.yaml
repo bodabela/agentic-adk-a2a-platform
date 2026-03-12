@@ -1,0 +1,23 @@
+agent:
+  name: "research_agent"
+  version: "0.1.0"
+  description: "Web research - search, fetch, person/company lookup, meeting preparation briefs"
+  category: "personal_assistant"
+  model: "gemini-2.5-flash"
+  model_fallback: "gemini-2.5-pro"
+  instruction: "prompts/system_prompt.md"
+  output_key: "research_agent_output"
+  capabilities:
+    - "web_search"
+    - "web_fetch"
+    - "person_lookup"
+    - "company_lookup"
+    - "meeting_preparation"
+  generate_content_config:
+    thinking: true
+  tools:
+    mcp:
+      - transport: "stdio"
+        server: "tools/mcp_server.py"
+    builtin:
+      - "send_notification"

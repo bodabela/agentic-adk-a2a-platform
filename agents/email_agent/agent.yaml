@@ -1,0 +1,22 @@
+agent:
+  name: "email_agent"
+  version: "0.1.0"
+  description: "Email management - read, summarize, prioritize, draft replies, track follow-ups"
+  category: "personal_assistant"
+  model: "gemini-2.5-flash"
+  model_fallback: "gemini-2.5-pro"
+  instruction: "prompts/system_prompt.md"
+  output_key: "email_agent_output"
+  capabilities:
+    - "email_management"
+    - "email_summarization"
+    - "email_drafting"
+    - "email_prioritization"
+  generate_content_config:
+    thinking: true
+  tools:
+    mcp:
+      - transport: "stdio"
+        server: "tools/mcp_server.py"
+    builtin:
+      - "send_notification"

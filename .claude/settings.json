@@ -99,7 +99,9 @@
       "Bash(mkdir -p shared/layout shared/components shared/hooks shared/types)",
       "Bash(mkdir -p features/dashboard features/tasks/components features/flows/components)",
       "Bash(mkdir -p features/agents features/root-agents features/tools features/costs)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(grep -E \"^/c/@projects/gen-ai-is-builder-2/[^/]+$\")",
+      "Bash(done)"
     ],
     "additionalDirectories": [
       "c:\\@projects\\gen-ai-is-builder-2\\backend\\src\\interactions"
