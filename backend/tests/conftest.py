@@ -9,6 +9,3 @@ def flows_dir():
     return Path(__file__).parent.parent.parent / "flows"
 
 
-@pytest.fixture
-def modules_dir():
-    return Path(__file__).parent.parent.parent / "modules"

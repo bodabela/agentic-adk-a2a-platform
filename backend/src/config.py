@@ -11,8 +11,7 @@ class Settings(BaseSettings):
     # LLM config (provider/model/pricing defined in YAML, API keys in .env)
     llm_config_path: str = "../config/llm_providers.yaml"
 
-    # Modules (legacy — kept for backward compatibility during migration)
-    modules_dir: str = "../modules"
+    # Directories
     flows_dir: str = "../flows"
     workspace_dir: str = "../workspace"
 

@@ -43,7 +43,7 @@ const textareaStyle: React.CSSProperties = {
 };
 
 export function AgentsPage() {
-  const { agents, selectedAgent, loading, fetchAgents, fetchAgentDetail, updateAgent, deleteAgent, createAgent, clearSelection } = useAgentStore();
+  const { agents, selectedAgent, loading, fetchAgents, fetchAgentDetail, updateAgent, deleteAgent, createAgent } = useAgentStore();
   const [activeTab, setActiveTab] = useState<'overview' | 'yaml' | 'prompt'>('overview');
   const [editYaml, setEditYaml] = useState('');
   const [editPrompt, setEditPrompt] = useState('');

@@ -298,9 +298,9 @@ function EventList({ events }: { events: TaskEvent[] }) {
               <span style={{ color: style.color }}>{evt.event_type}</span>
               {agent && <span style={{ color: '#a78bfa' }}>{agent}</span>}
               {model && <span style={{ color: '#64748b' }}>[{model}]</span>}
-              {d?.transfer_context && typeof d.transfer_context === 'object' && (
+              {d?.transfer_context && typeof d.transfer_context === 'object' ? (
                 <TransferContextPopup context={d.transfer_context as Record<string, unknown>} />
-              )}
+              ) : null}
             </div>
             {summary && (
               <div style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>

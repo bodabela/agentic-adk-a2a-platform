@@ -373,9 +373,9 @@ function FlowEventList({ events }: { events: FlowEvent[] }) {
               <span style={{ color: eventColor }}>{evt.event_type}</span>
               {agent && <span style={{ color: '#a78bfa' }}>{agent}</span>}
               {model && <span style={{ color: '#64748b' }}>[{model}]</span>}
-              {evt.data.transfer_context && typeof evt.data.transfer_context === 'object' && (
+              {evt.data.transfer_context && typeof evt.data.transfer_context === 'object' ? (
                 <TransferContextPopup context={evt.data.transfer_context as Record<string, unknown>} />
-              )}
+              ) : null}
             </div>
             {summary && (
               <div style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
