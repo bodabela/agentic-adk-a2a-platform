@@ -13,17 +13,17 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from src.config import Settings
-from src.api import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api
-from src.events.bus import EventBus
-from src.cost.tracker import CostTracker
-from src.llm.config import load_llm_config
-from src.agents.factory import AgentFactory
-from src.agents.root_factory import RootAgentManager
-from src.agents.session_manager import SessionManager
-from src.interactions.store import InteractionStore
-from src.interactions.broker import InteractionBroker
-from src.interactions.channels.web_ui import WebUIChannel
-from src.common.logging import setup_logging
+from src.routers import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api
+from src.shared.events.bus import EventBus
+from src.shared.cost.tracker import CostTracker
+from src.shared.llm.config import load_llm_config
+from src.shared.agents.factory import AgentFactory
+from src.shared.agents.root_factory import RootAgentManager
+from src.shared.agents.session_manager import SessionManager
+from src.shared.interactions.store import InteractionStore
+from src.shared.interactions.broker import InteractionBroker
+from src.shared.interactions.channels.web_ui import WebUIChannel
+from src.shared.logging import setup_logging
 
 settings = Settings()
 
@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
 
     # Teams channel (if configured)
     if settings.teams_enabled:
-        from src.interactions.channels.teams import TeamsChannel
+        from src.shared.interactions.channels.teams import TeamsChannel
         teams_channel = TeamsChannel(
             app_id=settings.teams_app_id,
             app_password=settings.teams_app_password,
@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
 
     # WhatsApp channel (if configured)
     if settings.whatsapp_enabled:
-        from src.interactions.channels.whatsapp import WhatsAppChannel
+        from src.shared.interactions.channels.whatsapp import WhatsAppChannel
         whatsapp_channel = WhatsAppChannel(
             account_sid=settings.whatsapp_account_sid,
             auth_token=settings.whatsapp_auth_token,

@@ -3,14 +3,14 @@
 import pytest
 import asyncio
 
-from src.flow_engine.context import FlowContext
-from src.flow_engine.retry_manager import RetryManager, RetryLimitExceeded
-from src.flow_engine.dsl.schema import FlowConfig
-from src.flow_engine.dsl.parser import FlowParser
-from src.flow_engine.engine import FlowEngine
-from src.events.bus import EventBus
-from src.cost.tracker import CostTracker
-from src.llm.config import LLMProvidersConfig
+from src.features.flows.engine.context import FlowContext
+from src.features.flows.engine.retry_manager import RetryManager, RetryLimitExceeded
+from src.features.flows.engine.dsl.schema import FlowConfig
+from src.features.flows.engine.dsl.parser import FlowParser
+from src.features.flows.engine.engine import FlowEngine
+from src.shared.events.bus import EventBus
+from src.shared.cost.tracker import CostTracker
+from src.shared.llm.config import LLMProvidersConfig
 
 
 class TestFlowContext:

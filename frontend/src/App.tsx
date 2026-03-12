@@ -1,13 +1,13 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AppShell } from './components/layout/AppShell';
-import { DashboardPage } from './pages/DashboardPage';
-import { TasksPage } from './pages/TasksPage';
-import { FlowsPage } from './pages/FlowsPage';
-import { CostsPage } from './pages/CostsPage';
-import { AgentsPage } from './pages/AgentsPage';
-import { RootAgentsPage } from './pages/RootAgentsPage';
-import { ToolsPage } from './pages/ToolsPage';
-import { useSSE } from './hooks/useSSE';
+import { AppShell } from './shared/layout/AppShell';
+import { DashboardPage } from './features/dashboard/DashboardPage';
+import { TasksPage } from './features/tasks/TasksPage';
+import { FlowsPage } from './features/flows/FlowsPage';
+import { CostsPage } from './features/costs/CostsPage';
+import { AgentsPage } from './features/agents/AgentsPage';
+import { RootAgentsPage } from './features/root-agents/RootAgentsPage';
+import { ToolsPage } from './features/tools/ToolsPage';
+import { useSSE } from './shared/hooks/useSSE';
 
 function AppContent() {
   useSSE();

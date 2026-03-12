@@ -91,7 +91,15 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/flow_engine/engine.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/api/interactions.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/interactions/channels/whatsapp.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/flow_engine/engine.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/interactions/channels/whatsapp.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/interactions/channels/whatsapp.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/flow_engine/engine.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/interactions/models.py''\\).read\\(\\)\\); print\\(''Backend OK''\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''backend/src/interactions/channels/whatsapp.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/flow_engine/engine.py''\\).read\\(\\)\\); ast.parse\\(open\\(''backend/src/interactions/models.py''\\).read\\(\\)\\); print\\(''Backend OK''\\)\")",
+      "Bash(rm -rf api/ common/ events/ agents/ interactions/ llm/ cost/ flow_engine/ orchestrator/)",
+      "Bash(find . -type d -name __pycache__ -exec rm -rf {} +)",
+      "Bash(python -c \"from src.main import app; print\\(''Import OK''\\)\")",
+      "Bash(make test:*)",
+      "Bash(mkdir -p shared/layout shared/components shared/hooks shared/types)",
+      "Bash(mkdir -p features/dashboard features/tasks/components features/flows/components)",
+      "Bash(mkdir -p features/agents features/root-agents features/tools features/costs)",
+      "Bash(npx vite:*)"
     ],
     "additionalDirectories": [
       "c:\\@projects\\gen-ai-is-builder-2\\backend\\src\\interactions"

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.llm.config import (
+from src.shared.llm.config import (
     LLMProvidersConfig,
     LLMDefaults,
     ProviderConfig,

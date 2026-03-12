@@ -2,10 +2,10 @@
 
 import pytest
 
-from src.cost.tracker import CostTracker
-from src.cost.models import OperationType
-from src.events.bus import EventBus
-from src.llm.config import LLMProvidersConfig, ProviderConfig, ModelConfig, ModelPricing
+from src.shared.cost.tracker import CostTracker
+from src.shared.cost.models import OperationType
+from src.shared.events.bus import EventBus
+from src.shared.llm.config import LLMProvidersConfig, ProviderConfig, ModelConfig, ModelPricing
 
 
 def _test_llm_config() -> LLMProvidersConfig:

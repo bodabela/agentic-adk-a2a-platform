@@ -2,9 +2,9 @@
 
 import pytest
 
-from src.flow_engine.dsl.parser import FlowParser
-from src.flow_engine.dsl.validator import FlowValidator
-from src.flow_engine.dsl.schema import (
+from src.features.flows.engine.dsl.parser import FlowParser
+from src.features.flows.engine.dsl.validator import FlowValidator
+from src.features.flows.engine.dsl.schema import (
     AgentTaskNode,
     LLMDecisionNode,
     HumanInteractionNode,
