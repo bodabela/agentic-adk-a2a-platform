@@ -140,6 +140,99 @@ def get_email(email_id: str) -> dict:
             "thread_id": "thread-001",
             "thread_count": 3,
         },
+        "mail-002": {
+            "email_id": "mail-002",
+            "from": "Nagy Anna <nagy.anna@company.hu>",
+            "to": ["me"],
+            "cc": [],
+            "subject": "Re: Sprint Planning Agenda",
+            "date": (now - timedelta(hours=5)).isoformat(),
+            "body": (
+                "Hi,\n\n"
+                "I've added the new feature requests to the agenda. Can you also include the tech debt items?\n\n"
+                "Here's what I have so far:\n"
+                "1. Feature: User dashboard redesign (45 min)\n"
+                "2. Feature: API rate limiting (30 min)\n"
+                "3. Bug triage from last sprint (20 min)\n\n"
+                "I think we should also schedule a separate meeting for the tech debt discussion — "
+                "maybe Thursday at 2 PM? Let me know if that works.\n\n"
+                "Thanks,\nAnna"
+            ),
+            "attachments": [],
+            "labels": ["inbox"],
+            "thread_id": "thread-002",
+            "thread_count": 5,
+        },
+        "mail-003": {
+            "email_id": "mail-003",
+            "from": "John Smith <john.smith@acmecorp.com>",
+            "to": ["me"],
+            "cc": ["Szabó Gábor <szabo.gabor@company.hu>"],
+            "subject": "Meeting Follow-up: Partnership Discussion",
+            "date": (now - timedelta(days=1)).isoformat(),
+            "body": (
+                "Hi,\n\n"
+                "Thank you for the productive meeting yesterday. As discussed, here are the next steps:\n\n"
+                "1. Technical integration review — let's schedule a call for next Tuesday at 10 AM (CET) "
+                "with your API team and our integration engineers.\n"
+                "   Attendees: you, Szabó Gábor, myself, and Sarah Chen from our side.\n\n"
+                "2. Contract review meeting — our legal team proposed next Wednesday at 3 PM (CET).\n"
+                "   Attendees: you, John Smith, Maria Lopez (AcmeCorp Legal).\n\n"
+                "3. Pilot kickoff — targeting the week of the 24th, exact date TBD.\n\n"
+                "Could you confirm these times work on your end?\n\n"
+                "Best regards,\nJohn Smith\nVP Partnerships, AcmeCorp"
+            ),
+            "attachments": [
+                {"name": "Partnership_Proposal_v2.pdf", "size": "1.2 MB"},
+            ],
+            "labels": ["inbox", "clients"],
+            "thread_id": "thread-003",
+            "thread_count": 2,
+        },
+        "mail-004": {
+            "email_id": "mail-004",
+            "from": "HR Department <hr@company.hu>",
+            "to": ["all-staff"],
+            "cc": [],
+            "subject": "Reminder: Annual Review Submissions Due Friday",
+            "date": (now - timedelta(days=1, hours=3)).isoformat(),
+            "body": (
+                "Dear Team,\n\n"
+                "This is a reminder that all annual self-review forms must be submitted by Friday, end of day.\n\n"
+                "Please complete the following:\n"
+                "1. Self-assessment form in the HR portal\n"
+                "2. Peer review nominations (minimum 3)\n"
+                "3. Goals for next quarter\n\n"
+                "Your manager review meetings will be scheduled for the following week. "
+                "You will receive a calendar invite once your submission is confirmed.\n\n"
+                "Best regards,\nHR Department"
+            ),
+            "attachments": [],
+            "labels": ["inbox", "hr"],
+            "thread_id": "thread-004",
+            "thread_count": 1,
+        },
+        "mail-005": {
+            "email_id": "mail-005",
+            "from": "Kovács Péter <kovacs.peter@company.hu>",
+            "to": ["me"],
+            "cc": [],
+            "subject": "Quick question about the API integration",
+            "date": (now - timedelta(days=2)).isoformat(),
+            "body": (
+                "Hey,\n\n"
+                "I noticed the API endpoint for the new feature is returning 500 errors intermittently.\n\n"
+                "Can you check the logs when you get a chance? I think it might be related to the "
+                "database connection pool changes we made last week.\n\n"
+                "Also — can we set up a quick 30-minute debugging session tomorrow morning? "
+                "Maybe around 9:30 AM? I'll share my screen and walk you through what I'm seeing.\n\n"
+                "Thanks,\nPéter"
+            ),
+            "attachments": [],
+            "labels": ["inbox", "dev"],
+            "thread_id": "thread-005",
+            "thread_count": 1,
+        },
     }
     email = mock_emails.get(email_id)
     if not email:
@@ -160,11 +253,16 @@ def search_emails(query: str, limit: int = 10) -> dict:
     """
     all_emails = _mock_inbox()
     query_lower = query.lower()
+    # Support OR-separated terms (e.g. "meeting OR találkozó")
+    terms = [t.strip() for t in query_lower.split(" or ") if t.strip()] if " or " in query_lower else [query_lower]
     results = [
         e for e in all_emails
-        if query_lower in e["subject"].lower()
-        or query_lower in e["from"].lower()
-        or query_lower in e["snippet"].lower()
+        if any(
+            term in e["subject"].lower()
+            or term in e["from"].lower()
+            or term in e["snippet"].lower()
+            for term in terms
+        )
     ]
     return {
         "status": "success",
