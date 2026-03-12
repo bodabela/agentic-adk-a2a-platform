@@ -196,6 +196,7 @@ class AgentFactory:
                         args=args,
                         env=env,
                     ),
+                    timeout=30,
                 ),
                 tool_filter=tool_filter,
             )
@@ -221,6 +222,7 @@ class AgentFactory:
                     command=sys.executable,
                     args=[str(server_path), "--workspace", workspace],
                 ),
+                timeout=30,
             ),
             tool_filter=tool_filter,
         )

@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from src.features.tasks.executor import execute_task, pending_interactions
+from src.features.tasks.executor import execute_task, pending_interactions, running_tasks
 
 router = APIRouter()
 
@@ -43,9 +43,8 @@ async def create_task(submission: TaskSubmission, request: Request):
     })
 
     # Execute via the root agent (async, non-blocking)
-    asyncio.create_task(
-        execute_task(task_id, submission, request)
-    )
+    task = asyncio.create_task(execute_task(task_id, submission, request))
+    running_tasks[task_id] = task
 
     return TaskResponse(
         task_id=task_id,

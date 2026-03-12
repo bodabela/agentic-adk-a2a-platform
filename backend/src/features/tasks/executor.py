@@ -14,6 +14,9 @@ logger = get_logger("tasks")
 # Module-level registry of pending interactions: interaction_id -> asyncio.Future
 pending_interactions: dict[str, asyncio.Future] = {}
 
+# Module-level registry of running asyncio tasks: task_id -> asyncio.Task
+running_tasks: dict[str, asyncio.Task] = {}
+
 
 async def execute_task(task_id: str, submission, request: Request):
     """Run the root agent to process the task."""
@@ -289,6 +292,15 @@ async def execute_task(task_id: str, submission, request: Request):
                 reason="no_final_text" if not final_response_text else "no_broker",
             )
 
+    except asyncio.CancelledError:
+        logger.info("task_cancelled", task_id=task_id)
+        await event_bus.emit("task_failed", {
+            "task_id": task_id,
+            "status": "cancelled",
+            "error": "Task was cancelled by user",
+        })
+        return
+
     except AgentSuspended as suspended:
         logger.info(
             "task_agent_suspended",
@@ -321,6 +333,8 @@ async def execute_task(task_id: str, submission, request: Request):
             "error": f"[{error_type}] {error_msg}",
         })
     finally:
+        # Clean up running task reference
+        running_tasks.pop(task_id, None)
         # Clean up any orphaned pending interactions
         orphaned = [iid for iid, f in pending_interactions.items() if not f.done()]
         for iid in orphaned:

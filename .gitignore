@@ -29,3 +29,6 @@ logs/
 Thumbs.db
 /workspace
 /root_agents/*.old
+/backend/*.db-wal
+/backend/*.db-shm
+/.claude

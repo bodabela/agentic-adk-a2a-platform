@@ -7,6 +7,7 @@ const navItems = [
   { path: '/agents', label: 'Agents', icon: '@' },
   { path: '/root-agents', label: 'Root Agents', icon: '*' },
   { path: '/tools', label: 'Tools', icon: '&' },
+  { path: '/sessions', label: 'Sessions', icon: '=' },
   { path: '/costs', label: 'Costs', icon: '$' },
 ];
 

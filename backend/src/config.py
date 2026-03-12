@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     agents_dir: str = "../agents"
     root_agents_dir: str = "../root_agents"
 
+    # ADK session persistence
+    adk_sessions_db: str = "/data/adk/sessions.db"
+
     # Interactions / channels
     interactions_db: str = "interactions.db"
     channels_config_path: str = "../config/channels.yaml"

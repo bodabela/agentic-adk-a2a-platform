@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from src.config import Settings
-from src.routers import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api
+from src.routers import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api, sessions
 from src.shared.events.bus import EventBus
 from src.shared.cost.tracker import CostTracker
 from src.shared.llm.config import load_llm_config
@@ -65,7 +65,8 @@ async def lifespan(app: FastAPI):
     agent_factory.load_definitions()
     app.state.agent_factory = agent_factory
 
-    session_manager = SessionManager()
+    db_url = f"sqlite+aiosqlite:///{settings.adk_sessions_db}"
+    session_manager = SessionManager(db_url=db_url)
     app.state.session_manager = session_manager
 
     # Interaction broker with channel adapters
@@ -115,6 +116,7 @@ async def lifespan(app: FastAPI):
 
     yield
     # Shutdown
+    await session_manager.close()
     interaction_store.close()
     await app.state.event_bus.shutdown()
 
@@ -138,3 +140,4 @@ app.include_router(root_agents.router, prefix="/api/root-agents", tags=["root-ag
 app.include_router(interactions_api.router, prefix="/api/interactions", tags=["interactions"])
 app.include_router(interactions_api._whatsapp_router, prefix="/api", tags=["channels-whatsapp"])
 app.include_router(tools_api.router, prefix="/api/tools", tags=["tools"])
+app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
