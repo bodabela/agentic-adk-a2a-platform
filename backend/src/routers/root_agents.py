@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.shared.agents.loader import (
     delete_root_agent_definition,
@@ -16,25 +16,51 @@ router = APIRouter()
 
 
 class RootAgentCreateRequest(BaseModel):
-    name: str
-    yaml_content: str
+    """Request body for creating a new root-agent definition."""
+
+    name: str = Field(
+        ...,
+        description="Unique name for the root agent.",
+        examples=["default-orchestrator"],
+    )
+    yaml_content: str = Field(
+        ...,
+        description="YAML content defining the root agent's orchestration config, sub-agents, and loop strategy.",
+    )
 
 
 class RootAgentUpdateRequest(BaseModel):
-    yaml_content: str
+    """Request body for updating a root-agent definition."""
+
+    yaml_content: str = Field(
+        ...,
+        description="Updated YAML content for the root agent definition.",
+    )
 
 
 class InstanceStartRequest(BaseModel):
-    definition_name: str
+    """Request body for starting a new root-agent instance."""
+
+    definition_name: str = Field(
+        ...,
+        description="Name of the root-agent definition to instantiate.",
+        examples=["default-orchestrator"],
+    )
 
 
 # ---------------------------------------------------------------------------
 # Definitions CRUD
 # ---------------------------------------------------------------------------
 
-@router.get("/definitions")
+@router.get(
+    "/definitions",
+    tags=["Admin: Root Agents"],
+    summary="List root-agent definitions",
+    description="Returns all registered root-agent definitions with metadata including "
+    "orchestration settings (model, max iterations) and the list of sub-agents.",
+    response_description="List of root-agent definitions with orchestration metadata.",
+)
 async def list_definitions(request: Request):
-    """List all root-agent definitions."""
     manager = request.app.state.root_agent_manager
     defs = []
     for name, defn in manager.definitions.items():
@@ -49,9 +75,15 @@ async def list_definitions(request: Request):
     return {"definitions": defs}
 
 
-@router.get("/definitions/{name}")
+@router.get(
+    "/definitions/{name}",
+    tags=["Admin: Root Agents"],
+    summary="Get root-agent definition",
+    description="Returns a single root-agent definition with its raw YAML content and parsed configuration. "
+    "Useful for editing in the UI.",
+    response_description="Root-agent name, raw YAML, and parsed definition.",
+)
 async def get_definition(name: str, request: Request):
-    """Get a single root-agent definition with raw YAML."""
     root_agents_dir = Path(request.app.state.settings.root_agents_dir).resolve()
     detail = get_root_agent_detail(root_agents_dir, name)
     if not detail:
@@ -66,9 +98,15 @@ async def get_definition(name: str, request: Request):
     }
 
 
-@router.post("/definitions")
+@router.post(
+    "/definitions",
+    tags=["Admin: Root Agents"],
+    summary="Create a root-agent definition",
+    description="Creates a new root-agent definition by saving the YAML config to the root agents directory. "
+    "The manager is reloaded automatically to pick up the new definition.",
+    response_description="Confirmation with the created definition.",
+)
 async def create_definition(req: RootAgentCreateRequest, request: Request):
-    """Create a new root-agent definition."""
     root_agents_dir = Path(request.app.state.settings.root_agents_dir).resolve()
     manager = request.app.state.root_agent_manager
 
@@ -84,9 +122,15 @@ async def create_definition(req: RootAgentCreateRequest, request: Request):
     return {"status": "created", "definition": defn.model_dump()}
 
 
-@router.put("/definitions/{name}")
+@router.put(
+    "/definitions/{name}",
+    tags=["Admin: Root Agents"],
+    summary="Update a root-agent definition",
+    description="Replaces the YAML configuration of an existing root-agent definition. "
+    "Running instances are not affected — they continue using the config they were started with.",
+    response_description="Confirmation with the updated definition.",
+)
 async def update_definition(name: str, req: RootAgentUpdateRequest, request: Request):
-    """Update a root-agent definition."""
     root_agents_dir = Path(request.app.state.settings.root_agents_dir).resolve()
     manager = request.app.state.root_agent_manager
 
@@ -102,9 +146,14 @@ async def update_definition(name: str, req: RootAgentUpdateRequest, request: Req
     return {"status": "updated", "definition": defn.model_dump()}
 
 
-@router.delete("/definitions/{name}")
+@router.delete(
+    "/definitions/{name}",
+    tags=["Admin: Root Agents"],
+    summary="Delete a root-agent definition",
+    description="Permanently removes a root-agent definition. Running instances of this definition are not affected.",
+    response_description="Confirmation with the deleted definition name.",
+)
 async def delete_definition(name: str, request: Request):
-    """Delete a root-agent definition."""
     root_agents_dir = Path(request.app.state.settings.root_agents_dir).resolve()
     manager = request.app.state.root_agent_manager
 
@@ -120,16 +169,27 @@ async def delete_definition(name: str, request: Request):
 # Instances
 # ---------------------------------------------------------------------------
 
-@router.get("/instances")
+@router.get(
+    "/instances",
+    tags=["Admin: Root Agents"],
+    summary="List running instances",
+    description="Returns all currently running root-agent instances with their IDs, definition names, and status.",
+    response_description="List of running root-agent instances.",
+)
 async def list_instances(request: Request):
-    """List running root-agent instances."""
     manager = request.app.state.root_agent_manager
     return {"instances": manager.list_instances()}
 
 
-@router.post("/instances")
+@router.post(
+    "/instances",
+    tags=["Admin: Root Agents"],
+    summary="Start a new instance",
+    description="Creates and starts a new root-agent instance from the specified definition. "
+    "The instance can then receive tasks via the `/api/tasks` endpoint.",
+    response_description="Confirmation with the started instance details.",
+)
 async def start_instance(req: InstanceStartRequest, request: Request):
-    """Start a new root-agent instance."""
     manager = request.app.state.root_agent_manager
     try:
         inst = manager.start_instance(req.definition_name)
@@ -138,9 +198,14 @@ async def start_instance(req: InstanceStartRequest, request: Request):
     return {"status": "started", "instance": inst.to_dict()}
 
 
-@router.delete("/instances/{instance_id}")
+@router.delete(
+    "/instances/{instance_id}",
+    tags=["Admin: Root Agents"],
+    summary="Stop a running instance",
+    description="Stops and removes a running root-agent instance. Any in-progress tasks will be cancelled.",
+    response_description="Confirmation with the stopped instance ID.",
+)
 async def stop_instance(instance_id: str, request: Request):
-    """Stop a running root-agent instance."""
     manager = request.app.state.root_agent_manager
     inst = manager.get_instance(instance_id)
     if not inst:

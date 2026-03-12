@@ -9,18 +9,17 @@ services:
       - .env
     environment:
       - APP_DEBUG=true
-      - APP_AGENTS_DIR=/agents
-      - APP_ROOT_AGENTS_DIR=/root_agents
-      - APP_FLOWS_DIR=/flows
+      - APP_PROJECT=${APP_PROJECT:-personal_assistant}
+      - APP_AGENTS_DIR=/project/agents
+      - APP_ROOT_AGENTS_DIR=/project/root_agents
+      - APP_FLOWS_DIR=/project/flows
       - APP_LLM_CONFIG_PATH=/config/llm_providers.yaml
       - APP_CHANNELS_CONFIG_PATH=/config/channels.yaml
       - APP_WORKSPACE_DIR=/workspace
       - APP_ADK_SESSIONS_DB=/data/adk/sessions.db
       - APP_CORS_ORIGINS=["http://localhost:5173"]
     volumes:
-      - ./agents:/agents:ro
-      - ./root_agents:/root_agents:ro
-      - ./flows:/flows:ro
+      - ./projects/${APP_PROJECT:-personal_assistant}:/project:ro
       - ./config:/config:ro
       - ./workspace:/workspace
       - adk-data:/data/adk
@@ -37,8 +36,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "5173:80"
     depends_on:
       backend:
         condition: service_healthy

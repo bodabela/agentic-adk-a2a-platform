@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.features.flows.engine.dsl.parser import FlowParser
 from src.features.flows.engine.dsl.validator import FlowValidator
@@ -18,23 +18,75 @@ _active_engines: dict[str, FlowEngine] = {}
 
 
 class FlowStartRequest(BaseModel):
-    flow_file: str
-    input: dict[str, Any] = {}
-    provider: str | None = None
-    model: str | None = None
-    channel: str | None = None
+    """Request body for starting a flow execution."""
+
+    flow_file: str = Field(
+        ...,
+        description="Filename of the flow definition (e.g. `onboarding.flow.yaml`). "
+        "Resolved relative to the configured flows directory.",
+        examples=["onboarding.flow.yaml"],
+    )
+    input: dict[str, Any] = Field(
+        default={},
+        description="Input variables for the flow's trigger. Keys must match the flow's `input_schema`.",
+        examples=[{"customer_name": "Acme Corp", "tier": "enterprise"}],
+    )
+    provider: str | None = Field(
+        default=None,
+        description="LLM provider override for this flow run (e.g. `google`, `anthropic`, `openai`).",
+    )
+    model: str | None = Field(
+        default=None,
+        description="LLM model override for this flow run (e.g. `gemini-2.0-flash`, `claude-sonnet-4-20250514`).",
+    )
+    channel: str | None = Field(
+        default=None,
+        description="Communication channel for human interaction nodes (`web_ui`, `teams`, `whatsapp`).",
+        examples=["web_ui"],
+    )
 
 
 class FlowStartResponse(BaseModel):
-    flow_id: str | None = None
-    status: str
-    flow_name: str
-    states: list[str] = []
+    """Response returned when a flow is successfully started."""
+
+    flow_id: str | None = Field(default=None, description="Unique identifier for the flow execution (if assigned).")
+    status: str = Field(..., description="Execution status.", examples=["started"])
+    flow_name: str = Field(..., description="Name of the flow definition.", examples=["onboarding"])
+    states: list[str] = Field(
+        default=[],
+        description="Ordered list of state names defined in the flow.",
+        examples=[["init", "collect_info", "review", "approve", "done"]],
+    )
 
 
 class InteractionResponse(BaseModel):
-    interaction_id: str
-    response: Any
+    """Request body for responding to a pending flow interaction."""
+
+    interaction_id: str = Field(..., description="ID of the pending interaction.", examples=["int-xyz789"])
+    response: Any = Field(..., description="The user's response value.", examples=["Approved"])
+
+
+class FlowCreateRequest(BaseModel):
+    """Request body for creating a new flow definition."""
+
+    filename: str = Field(
+        ...,
+        description="Filename for the new flow (must end with `.flow.yaml`).",
+        examples=["invoice-approval.flow.yaml"],
+    )
+    content: str = Field(
+        ...,
+        description="Raw YAML content of the flow definition.",
+    )
+
+
+class FlowUpdateRequest(BaseModel):
+    """Request body for updating an existing flow definition."""
+
+    content: str = Field(
+        ...,
+        description="Updated YAML content for the flow definition.",
+    )
 
 
 def _build_default_input(schema: dict[str, Any] | None) -> dict[str, Any]:
@@ -57,9 +109,15 @@ def _build_default_input(schema: dict[str, Any] | None) -> dict[str, Any]:
     return result
 
 
-@router.get("/")
+@router.get(
+    "/",
+    tags=["Client: Flows"],
+    summary="List flow definitions",
+    description="Returns all available flow definition files from the configured flows directory, "
+    "including parsed metadata (name, description) and default input values derived from the flow's input schema.",
+    response_description="List of flow definitions with metadata.",
+)
 async def list_flows(request: Request):
-    """List available flow definition files with metadata."""
     settings = request.app.state.settings
     flows_dir = Path(settings.flows_dir)
 
@@ -82,9 +140,17 @@ async def list_flows(request: Request):
     return {"flows": flows}
 
 
-@router.post("/start", response_model=FlowStartResponse)
+@router.post(
+    "/start",
+    tags=["Client: Flows"],
+    response_model=FlowStartResponse,
+    summary="Start a flow execution",
+    description="Parses and validates the specified flow definition, then starts asynchronous execution. "
+    "The flow engine processes states sequentially, emitting events via SSE for each transition. "
+    "Human interaction nodes will pause execution until a response is submitted.",
+    response_description="Flow execution details including the list of states to be executed.",
+)
 async def start_flow(req: FlowStartRequest, request: Request):
-    """Parse, validate, and start a flow execution."""
     flow_path = Path(req.flow_file)
     if not flow_path.exists():
         # Try relative to flows dir
@@ -130,9 +196,16 @@ async def start_flow(req: FlowStartRequest, request: Request):
     )
 
 
-@router.post("/interact")
+@router.post(
+    "/interact",
+    tags=["Client: Flows"],
+    summary="Respond to a flow interaction (legacy)",
+    description="Submit a user response to a pending `human_interaction` node in an active flow. "
+    "**Note:** prefer the unified `/api/interactions/respond` endpoint for new integrations.",
+    response_description="Confirmation that the response was delivered.",
+    deprecated=True,
+)
 async def submit_interaction(req: InteractionResponse):
-    """Submit a user response to a pending human_interaction node."""
     responded = False
     for engine in _active_engines.values():
         if await engine.submit_interaction_response(req.interaction_id, req.response):
@@ -148,9 +221,15 @@ async def submit_interaction(req: InteractionResponse):
     return {"status": "ok", "interaction_id": req.interaction_id}
 
 
-@router.get("/definition/{flow_file:path}")
+@router.get(
+    "/definition/{flow_file:path}",
+    tags=["Admin: Flows"],
+    summary="Get parsed flow definition",
+    description="Returns the fully parsed flow definition including all states, transitions, "
+    "configuration, and metadata. Useful for visualizing the flow graph in the UI.",
+    response_description="Parsed flow structure with states and configuration.",
+)
 async def get_flow_definition(flow_file: str, request: Request):
-    """Return the full parsed flow definition (states, transitions, config)."""
     settings = request.app.state.settings
     flow_path = Path(settings.flows_dir) / flow_file
     if not flow_path.exists():
@@ -178,9 +257,15 @@ async def get_flow_definition(flow_file: str, request: Request):
     }
 
 
-@router.get("/active")
+@router.get(
+    "/active",
+    tags=["Admin: Flows"],
+    summary="List active flows",
+    description="Returns the names of all currently executing flow engines. "
+    "A flow remains active until it reaches a terminal state or is explicitly stopped.",
+    response_description="List of active flow names.",
+)
 async def list_active_flows():
-    """List currently active flow engines."""
     return {
         "active_flows": [
             {"name": name}
@@ -193,18 +278,15 @@ async def list_active_flows():
 # Flow CRUD
 # ---------------------------------------------------------------------------
 
-class FlowCreateRequest(BaseModel):
-    filename: str
-    content: str
 
-
-class FlowUpdateRequest(BaseModel):
-    content: str
-
-
-@router.get("/raw/{flow_file:path}")
+@router.get(
+    "/raw/{flow_file:path}",
+    tags=["Admin: Flows"],
+    summary="Get raw flow YAML",
+    description="Returns the raw YAML content of a flow definition file for editing in the UI.",
+    response_description="Flow filename and its raw YAML content.",
+)
 async def get_flow_raw(flow_file: str, request: Request):
-    """Return raw YAML content for editing."""
     settings = request.app.state.settings
     flow_path = Path(settings.flows_dir) / flow_file
     if not flow_path.exists():
@@ -212,9 +294,15 @@ async def get_flow_raw(flow_file: str, request: Request):
     return {"file": flow_file, "content": flow_path.read_text(encoding="utf-8")}
 
 
-@router.post("/upload")
+@router.post(
+    "/upload",
+    tags=["Admin: Flows"],
+    summary="Create a new flow definition",
+    description="Uploads and validates a new flow YAML definition. The file is validated before saving — "
+    "if the YAML is invalid or contains schema errors, the request is rejected with details.",
+    response_description="Confirmation with the created filename.",
+)
 async def upload_flow(req: FlowCreateRequest, request: Request):
-    """Create/upload a new flow definition."""
     settings = request.app.state.settings
     flows_dir = Path(settings.flows_dir)
     flows_dir.mkdir(parents=True, exist_ok=True)
@@ -241,9 +329,14 @@ async def upload_flow(req: FlowCreateRequest, request: Request):
     return {"status": "created", "file": req.filename}
 
 
-@router.put("/{flow_file:path}")
+@router.put(
+    "/{flow_file:path}",
+    tags=["Admin: Flows"],
+    summary="Update a flow definition",
+    description="Replaces the content of an existing flow definition. The new YAML is validated before saving.",
+    response_description="Confirmation with the updated filename.",
+)
 async def update_flow(flow_file: str, req: FlowUpdateRequest, request: Request):
-    """Update a flow definition."""
     settings = request.app.state.settings
     flow_path = Path(settings.flows_dir) / flow_file
     if not flow_path.exists():
@@ -267,9 +360,15 @@ async def update_flow(flow_file: str, req: FlowUpdateRequest, request: Request):
     return {"status": "updated", "file": flow_file}
 
 
-@router.delete("/{flow_file:path}")
+@router.delete(
+    "/{flow_file:path}",
+    tags=["Admin: Flows"],
+    summary="Delete a flow definition",
+    description="Permanently removes a flow definition file from the flows directory. "
+    "This does not affect already-running flow executions.",
+    response_description="Confirmation with the deleted filename.",
+)
 async def delete_flow(flow_file: str, request: Request):
-    """Delete a flow definition."""
     settings = request.app.state.settings
     flow_path = Path(settings.flows_dir) / flow_file
     if not flow_path.exists():

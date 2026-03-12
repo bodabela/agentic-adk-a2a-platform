@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -8,16 +9,33 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Project selection (e.g. "personal_assistant")
+    # When set, agents_dir / root_agents_dir / flows_dir default to
+    # ../projects/{project}/agents  etc.
+    project: str = "personal_assistant"
+
     # LLM config (provider/model/pricing defined in YAML, API keys in .env)
     llm_config_path: str = "../config/llm_providers.yaml"
 
-    # Directories
-    flows_dir: str = "../flows"
+    # Directories (auto-derived from `project` if not explicitly overridden)
+    flows_dir: str = ""
     workspace_dir: str = "../workspace"
 
     # Declarative agent & root-agent definitions
-    agents_dir: str = "../agents"
-    root_agents_dir: str = "../root_agents"
+    agents_dir: str = ""
+    root_agents_dir: str = ""
+
+    @model_validator(mode="after")
+    def _resolve_project_dirs(self) -> "Settings":
+        """Fill in blank directory paths from the active project name."""
+        base = f"../projects/{self.project}"
+        if not self.agents_dir:
+            self.agents_dir = f"{base}/agents"
+        if not self.root_agents_dir:
+            self.root_agents_dir = f"{base}/root_agents"
+        if not self.flows_dir:
+            self.flows_dir = f"{base}/flows"
+        return self
 
     # ADK session persistence
     adk_sessions_db: str = "/data/adk/sessions.db"

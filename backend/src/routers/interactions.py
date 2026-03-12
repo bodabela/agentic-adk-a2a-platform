@@ -3,7 +3,7 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.shared.logging import get_logger
 
@@ -13,20 +13,37 @@ router = APIRouter()
 
 
 class InteractionResponseBody(BaseModel):
-    interaction_id: str
-    response: Any
-    responder: str = ""
+    """Request body for submitting a response to a pending interaction."""
+
+    interaction_id: str = Field(
+        ...,
+        description="ID of the pending interaction to respond to.",
+        examples=["int-abc123"],
+    )
+    response: Any = Field(
+        ...,
+        description="The response value. Type depends on the interaction: free text (string), "
+        "choice selection (string), or confirmation (boolean).",
+        examples=["Yes, approve the deployment"],
+    )
+    responder: str = Field(
+        default="",
+        description="Optional identifier of who responded (e.g. username, email, channel user ID).",
+        examples=["alice@example.com"],
+    )
 
 
-@router.post("/respond")
+@router.post(
+    "/respond",
+    tags=["Client: Interactions"],
+    summary="Submit an interaction response",
+    description="Submit a user response to any pending human-in-the-loop interaction, regardless of channel. "
+    "This is the **preferred unified endpoint** — it routes the response to the correct handler "
+    "(task executor, flow engine, or interaction broker) automatically.\n\n"
+    "Falls back to legacy task and flow interaction handlers for backward compatibility.",
+    response_description="Confirmation with the interaction ID and routing info.",
+)
 async def submit_interaction_response(body: InteractionResponseBody, request: Request):
-    """Submit a response to any pending interaction (from any channel).
-
-    This is the unified endpoint that replaces the separate
-    /api/tasks/interact and /api/flows/interact endpoints.
-    Both old endpoints still work for backward compatibility,
-    but new code should use this one.
-    """
     broker = request.app.state.interaction_broker
 
     success = await broker.submit_response(
@@ -56,13 +73,19 @@ async def submit_interaction_response(body: InteractionResponseBody, request: Re
     return {"status": "ok", "interaction_id": body.interaction_id}
 
 
-@router.get("/pending")
+@router.get(
+    "/pending",
+    tags=["Client: Interactions"],
+    summary="List pending interactions",
+    description="Returns all interactions currently awaiting a human response. "
+    "Optionally filter by communication channel or context ID (task/flow ID).",
+    response_description="List of pending interactions with metadata.",
+)
 async def list_pending_interactions(
     request: Request,
     channel: str | None = None,
     context_id: str | None = None,
 ):
-    """List all pending interactions, optionally filtered by channel or context."""
     broker = request.app.state.interaction_broker
     pending = broker.get_pending(channel=channel, context_id=context_id)
     return {
@@ -84,9 +107,15 @@ async def list_pending_interactions(
     }
 
 
-@router.get("/")
+@router.get(
+    "/",
+    tags=["Admin: Interactions"],
+    summary="List recent interactions",
+    description="Returns recent interactions across all statuses (pending, answered, expired). "
+    "Useful for audit trails and debugging interaction flows.",
+    response_description="List of interactions with status and responder info.",
+)
 async def list_all_interactions(request: Request, limit: int = 50):
-    """List recent interactions across all statuses."""
     broker = request.app.state.interaction_broker
     interactions = broker.get_all(limit=limit)
     return {
@@ -108,21 +137,34 @@ async def list_all_interactions(request: Request, limit: int = 50):
     }
 
 
-@router.get("/channels")
+@router.get(
+    "/channels",
+    tags=["Client: Interactions"],
+    summary="List available channels",
+    description="Returns the names of all registered communication channels (e.g. `web_ui`, `teams`, `whatsapp`). "
+    "A channel is available if it was configured and registered at startup.",
+    response_description="List of available channel names.",
+)
 async def list_channels(request: Request):
-    """List available communication channels."""
     broker = request.app.state.interaction_broker
     return {"channels": broker.available_channels}
 
 
 # ---------- Channel webhooks (static routes) ----------
 
-_whatsapp_router = APIRouter(prefix="/channels/whatsapp", tags=["channels-whatsapp"])
+_whatsapp_router = APIRouter(prefix="/channels/whatsapp")
 
 
-@_whatsapp_router.post("/webhook")
+@_whatsapp_router.post(
+    "/webhook",
+    tags=["Client: Channels"],
+    summary="WhatsApp incoming webhook",
+    description="Receives incoming WhatsApp messages via Twilio's webhook. "
+    "The message is routed to the interaction broker which matches it to any pending interaction. "
+    "Returns TwiML XML response.",
+    response_description="Empty TwiML response.",
+)
 async def whatsapp_webhook(request: Request):
-    """Receive incoming WhatsApp messages via Twilio."""
     broker = getattr(request.app.state, "interaction_broker", None)
     channel = broker.get_channel("whatsapp") if broker else None
     if not channel:

@@ -4,14 +4,14 @@ setlocal enabledelayedexpansion
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
 
-title Agent Platform
+title Agent Platform (DEV)
 
 :: ---- Project selection (default: personal_assistant) ----
 if "%APP_PROJECT%"=="" set "APP_PROJECT=personal_assistant"
 
 echo.
 echo ============================================
-echo   Agent Platform - Docker Startup
+echo   Agent Platform - Dev Mode (Hot Reload)
 echo   Project: %APP_PROJECT%
 echo ============================================
 echo.
@@ -58,12 +58,12 @@ if not exist "%ROOT%\.env" (
     echo   [OK]   .env found
 )
 
-:: ---- Build & Start ----
-echo [3/3] Starting services with Docker Compose ...
+:: ---- Build & Start (dev mode with override) ----
+echo [3/3] Starting services in DEV mode ...
 echo.
 
 pushd "%ROOT%"
-docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build -d
+docker compose up --build -d
 if errorlevel 1 (
     echo.
     echo   [FAIL] Docker Compose failed. Check the output above for errors.
@@ -98,7 +98,7 @@ echo   [OK]   Backend healthy
 :show_urls
 echo.
 echo ============================================
-echo   All services running!
+echo   Dev services running (hot reload active)
 echo ============================================
 echo.
 echo   Frontend:     http://localhost:5173
@@ -106,8 +106,11 @@ echo   Backend API:  http://localhost:8000
 echo   Swagger UI:   http://localhost:8000/docs
 echo   SSE Stream:   http://localhost:8000/api/events/stream
 echo.
+echo   Hot reload:
+echo     - Backend:  edit backend/src/ ^-^> uvicorn auto-restarts
+echo     - Frontend: edit frontend/src/ ^-^> Vite HMR refreshes browser
+echo.
 echo   Logs:         docker compose logs -f
-echo   Agents run in-process (no separate service needed).
 echo.
 echo   Press any key to STOP all services ...
 echo.
@@ -120,7 +123,7 @@ pause >nul
 echo.
 echo Stopping services ...
 pushd "%ROOT%"
-docker compose -f docker-compose.yaml -f docker-compose.prod.yaml down
+docker compose down
 popd
 
 echo Done.

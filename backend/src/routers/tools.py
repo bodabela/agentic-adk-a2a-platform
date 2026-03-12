@@ -1,7 +1,6 @@
 """Tools discovery API — lists all MCP and builtin tools with full schemas."""
 
 import ast
-import inspect
 import re
 from pathlib import Path
 
@@ -188,9 +187,18 @@ def _mcp_server_label(mcp_conf, agents_dir: Path, agent_name: str) -> str:
     return "unknown"
 
 
-@router.get("/")
+@router.get(
+    "/",
+    tags=["Admin: Tools"],
+    summary="List all available tools",
+    description="Discovers and returns all tools available to agents on the platform, including:\n\n"
+    "- **MCP tools** — extracted via AST parsing from local MCP server source files, or listed as "
+    "remote endpoints for SSE/command-based servers\n"
+    "- **Built-in tools** — platform-provided tools like `ask_user`, `send_notification`, `exit_loop`\n\n"
+    "Each tool includes its name, description, parameter schema, and which agents use it.",
+    response_description="Categorized tool list with parameter schemas and a summary count.",
+)
 async def list_tools(request: Request):
-    """List all available tools (MCP + builtin) with full schemas."""
     factory = request.app.state.agent_factory
     agents_dir = Path(request.app.state.settings.agents_dir).resolve()
 

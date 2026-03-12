@@ -1,0 +1,20 @@
+services:
+  backend:
+    volumes:
+      - ./backend/src:/app/src
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/public:/app/public
+    environment:
+      - VITE_API_URL=http://backend:8000
+    command: ["pnpm", "dev", "--host", "0.0.0.0", "--port", "5173"]

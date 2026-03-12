@@ -177,35 +177,77 @@ export function AgentsPage() {
 
             {/* Tab content */}
             {activeTab === 'overview' && selectedAgent.definition && (
-              <div style={{ background: '#1e293b', borderRadius: 8, padding: '1.5rem', border: '1px solid #334155' }}>
-                <h3 style={{ color: '#e2e8f0', margin: '0 0 1rem' }}>{selectedAgent.definition.name}</h3>
-                <p style={{ color: '#94a3b8' }}>{selectedAgent.definition.description}</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '1rem' }}>
-                  <div>
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Model</div>
-                    <div style={{ color: '#e2e8f0' }}>{selectedAgent.definition.model}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto' }}>
+                <div style={{ background: '#1e293b', borderRadius: 8, padding: '1.5rem', border: '1px solid #334155' }}>
+                  <h3 style={{ color: '#e2e8f0', margin: '0 0 1rem' }}>{selectedAgent.definition.name}</h3>
+                  <p style={{ color: '#94a3b8' }}>{selectedAgent.definition.description}</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '1rem' }}>
+                    <div>
+                      <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Model</div>
+                      <div style={{ color: '#e2e8f0' }}>{selectedAgent.definition.model}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Category</div>
+                      <div style={{ color: '#e2e8f0' }}>{selectedAgent.definition.category}</div>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: 4 }}>Capabilities</div>
+                      <CapabilityBadges items={selectedAgent.definition.capabilities} />
+                      {selectedAgent.definition.capabilities.length === 0 && (
+                        <span style={{ color: '#64748b' }}>none</span>
+                      )}
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: 4 }}>Tools</div>
+                      {(() => {
+                        const agentFromList = agents.find((a: AgentDefinition) => a.name === selectedAgent.definition!.name);
+                        const toolNames = agentFromList?.tools || [];
+                        return toolNames.length > 0
+                          ? <ToolBadges items={toolNames} />
+                          : <span style={{ color: '#64748b' }}>none</span>;
+                      })()}
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ color: '#64748b', fontSize: '0.8rem' }}>Category</div>
-                    <div style={{ color: '#e2e8f0' }}>{selectedAgent.definition.category}</div>
+                </div>
+
+                {/* System Prompt (read-only) */}
+                {selectedAgent.prompt_content && (
+                  <div style={{ background: '#1e293b', borderRadius: 8, padding: '1.5rem', border: '1px solid #334155' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Prompt</div>
+                    <pre style={{
+                      margin: 0,
+                      fontFamily: 'monospace',
+                      fontSize: '0.85rem',
+                      color: '#e2e8f0',
+                      background: '#0f172a',
+                      border: '1px solid #334155',
+                      borderRadius: 6,
+                      padding: '0.75rem',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      maxHeight: 400,
+                      overflowY: 'auto',
+                    }}>{selectedAgent.prompt_content}</pre>
                   </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: 4 }}>Capabilities</div>
-                    <CapabilityBadges items={selectedAgent.definition.capabilities} />
-                    {selectedAgent.definition.capabilities.length === 0 && (
-                      <span style={{ color: '#64748b' }}>none</span>
-                    )}
-                  </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: 4 }}>Tools</div>
-                    {(() => {
-                      const agentFromList = agents.find((a: AgentDefinition) => a.name === selectedAgent.definition!.name);
-                      const toolNames = agentFromList?.tools || [];
-                      return toolNames.length > 0
-                        ? <ToolBadges items={toolNames} />
-                        : <span style={{ color: '#64748b' }}>none</span>;
-                    })()}
-                  </div>
+                )}
+
+                {/* YAML Definition (read-only) */}
+                <div style={{ background: '#1e293b', borderRadius: 8, padding: '1.5rem', border: '1px solid #334155' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>YAML Definition</div>
+                  <pre style={{
+                    margin: 0,
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                    color: '#e2e8f0',
+                    background: '#0f172a',
+                    border: '1px solid #334155',
+                    borderRadius: 6,
+                    padding: '0.75rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    maxHeight: 400,
+                    overflowY: 'auto',
+                  }}>{selectedAgent.yaml_content}</pre>
                 </div>
               </div>
             )}

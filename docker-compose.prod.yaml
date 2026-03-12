@@ -1,0 +1,4 @@
+services:
+  frontend:
+    ports:
+      - "5173:80"

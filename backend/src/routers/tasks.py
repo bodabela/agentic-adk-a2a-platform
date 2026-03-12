@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.features.tasks.executor import execute_task, pending_interactions, running_tasks
 
@@ -13,27 +13,69 @@ router = APIRouter()
 
 
 class TaskSubmission(BaseModel):
-    description: str
-    context: dict | None = None
-    root_agent_definition: str | None = None    # which root-agent def to use
-    root_agent_instance_id: str | None = None   # or which running instance
-    channel: str | None = None                  # interaction channel override
+    """Request body for submitting a new task to the platform."""
+
+    description: str = Field(
+        ...,
+        description="Natural-language description of what the task should accomplish.",
+        examples=["Summarize the latest sales report and send it to the team"],
+    )
+    context: dict | None = Field(
+        default=None,
+        description="Optional key-value context passed to the agent (e.g. user info, prior results).",
+        examples=[{"user_email": "alice@example.com", "priority": "high"}],
+    )
+    root_agent_definition: str | None = Field(
+        default=None,
+        description="Name of the root-agent definition to use. Mutually exclusive with `root_agent_instance_id`.",
+        examples=["default-orchestrator"],
+    )
+    root_agent_instance_id: str | None = Field(
+        default=None,
+        description="ID of an already-running root-agent instance to route the task to.",
+    )
+    channel: str | None = Field(
+        default=None,
+        description="Communication channel override for human interactions (e.g. `web_ui`, `teams`, `whatsapp`). "
+        "Defaults to the platform default.",
+        examples=["web_ui"],
+    )
 
 
 class TaskResponse(BaseModel):
-    task_id: str
-    status: str
-    description: str
+    """Response returned when a task is successfully submitted."""
+
+    task_id: str = Field(..., description="Unique identifier for the created task.", examples=["a1b2c3d4-e5f6-7890-abcd-ef1234567890"])
+    status: str = Field(..., description="Current task status.", examples=["submitted"])
+    description: str = Field(..., description="Echo of the submitted task description.")
 
 
 class TaskInteractionResponse(BaseModel):
-    interaction_id: str
-    response: Any
+    """Request body for responding to a pending human-in-the-loop interaction."""
+
+    interaction_id: str = Field(
+        ...,
+        description="ID of the pending interaction to respond to.",
+        examples=["int-abc123"],
+    )
+    response: Any = Field(
+        ...,
+        description="The user's response value. Can be free text, a choice selection, or a boolean confirmation.",
+        examples=["Yes, approve the deployment"],
+    )
 
 
-@router.post("/", response_model=TaskResponse)
+@router.post(
+    "/",
+    tags=["Client: Tasks"],
+    response_model=TaskResponse,
+    summary="Submit a new task",
+    description="Creates a new task and routes it to the specified (or default) root agent for execution. "
+    "The task runs asynchronously — subscribe to the SSE stream at `/api/events/stream` to receive "
+    "real-time progress updates, cost events, and interaction requests.",
+    response_description="The created task with its assigned ID and initial status.",
+)
 async def create_task(submission: TaskSubmission, request: Request):
-    """Submit a new task to the root agent."""
     task_id = str(uuid.uuid4())
     event_bus = request.app.state.event_bus
 
@@ -53,9 +95,15 @@ async def create_task(submission: TaskSubmission, request: Request):
     )
 
 
-@router.get("/{task_id}")
+@router.get(
+    "/{task_id}",
+    tags=["Client: Tasks"],
+    summary="Get task status",
+    description="Retrieves the current status and accumulated LLM cost report for a task. "
+    "The cost report includes per-model token counts and estimated cost in USD.",
+    response_description="Task status with optional cost breakdown.",
+)
 async def get_task(task_id: str, request: Request):
-    """Get task status and cost report."""
     cost_tracker = request.app.state.cost_tracker
     report = cost_tracker.get_report(task_id)
     return {
@@ -64,9 +112,16 @@ async def get_task(task_id: str, request: Request):
     }
 
 
-@router.post("/interact")
+@router.post(
+    "/interact",
+    tags=["Client: Tasks"],
+    summary="Respond to a task interaction (legacy)",
+    description="Submit a user response to a pending human-in-the-loop interaction within a task. "
+    "**Note:** prefer the unified `/api/interactions/respond` endpoint for new integrations.",
+    response_description="Confirmation that the response was delivered.",
+    deprecated=True,
+)
 async def submit_task_interaction(req: TaskInteractionResponse):
-    """Submit a user response to a pending task interaction."""
     future = pending_interactions.get(req.interaction_id)
     if future and not future.done():
         future.set_result(req.response)

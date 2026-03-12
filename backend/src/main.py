@@ -50,6 +50,8 @@ async def lifespan(app: FastAPI):
     app.state.event_bus = EventBus()
     app.state.cost_tracker = CostTracker(app.state.event_bus, llm_config=app.state.llm_config)
 
+    _log.info("Active project: %s", settings.project)
+
     # Declarative agent infrastructure
     from pathlib import Path
     agents_dir = Path(settings.agents_dir).resolve()
@@ -121,7 +123,73 @@ async def lifespan(app: FastAPI):
     await app.state.event_bus.shutdown()
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app = FastAPI(
+    title=settings.app_name,
+    description=(
+        "Agentic platform for orchestrating AI agents built on Google ADK. "
+        "Supports declarative agent definitions, YAML-based flow execution, "
+        "multi-channel human-in-the-loop interactions (Web UI, Teams, WhatsApp), "
+        "real-time SSE event streaming, and LLM cost tracking."
+    ),
+    version="1.0.0",
+    lifespan=lifespan,
+    openapi_tags=[
+        # ── Client API ─────────────────────────────────────
+        {
+            "name": "Client: Health",
+            "description": "Service health checks and readiness probes.",
+        },
+        {
+            "name": "Client: Tasks",
+            "description": "Submit tasks to root agents and track execution status and cost.",
+        },
+        {
+            "name": "Client: Flows",
+            "description": "List and start YAML-based workflow executions.",
+        },
+        {
+            "name": "Client: Events",
+            "description": "Server-Sent Events (SSE) stream for real-time platform updates.",
+        },
+        {
+            "name": "Client: Interactions",
+            "description": "Submit responses to pending human-in-the-loop interactions and list available channels.",
+        },
+        {
+            "name": "Client: Channels",
+            "description": "Channel-specific webhooks (WhatsApp via Twilio).",
+        },
+        # ── Admin API ──────────────────────────────────────
+        {
+            "name": "Admin: Flows",
+            "description": "CRUD operations for flow definitions — view, create, update, delete YAML definitions and monitor active flows.",
+        },
+        {
+            "name": "Admin: LLM",
+            "description": "LLM provider and model configuration.",
+        },
+        {
+            "name": "Admin: Agents",
+            "description": "CRUD operations for declarative agent definitions with YAML config and prompt templates.",
+        },
+        {
+            "name": "Admin: Root Agents",
+            "description": "Root agent definition CRUD and instance lifecycle management.",
+        },
+        {
+            "name": "Admin: Interactions",
+            "description": "Audit trail — list all interactions across statuses.",
+        },
+        {
+            "name": "Admin: Tools",
+            "description": "Tool discovery — list all MCP and built-in tools with full parameter schemas.",
+        },
+        {
+            "name": "Admin: Sessions",
+            "description": "ADK session lifecycle — list, stop, and delete sessions.",
+        },
+    ],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -130,14 +198,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(health.router, tags=["health"])
-app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
-app.include_router(flows.router, prefix="/api/flows", tags=["flows"])
-app.include_router(events.router, prefix="/api/events", tags=["events"])
-app.include_router(llm.router, prefix="/api/llm", tags=["llm"])
-app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
-app.include_router(root_agents.router, prefix="/api/root-agents", tags=["root-agents"])
-app.include_router(interactions_api.router, prefix="/api/interactions", tags=["interactions"])
-app.include_router(interactions_api._whatsapp_router, prefix="/api", tags=["channels-whatsapp"])
-app.include_router(tools_api.router, prefix="/api/tools", tags=["tools"])
-app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
+app.include_router(health.router)
+app.include_router(tasks.router, prefix="/api/tasks")
+app.include_router(flows.router, prefix="/api/flows")
+app.include_router(events.router, prefix="/api/events")
+app.include_router(llm.router, prefix="/api/llm")
+app.include_router(agents.router, prefix="/api/agents")
+app.include_router(root_agents.router, prefix="/api/root-agents")
+app.include_router(interactions_api.router, prefix="/api/interactions")
+app.include_router(interactions_api._whatsapp_router, prefix="/api")
+app.include_router(tools_api.router, prefix="/api/tools")
+app.include_router(sessions.router, prefix="/api/sessions")

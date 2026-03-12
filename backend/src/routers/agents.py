@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.shared.agents.loader import (
     delete_agent_definition,
@@ -30,23 +30,49 @@ def _extract_mcp_tool_names(server_path: Path) -> list[str]:
 
 
 class AgentCreateRequest(BaseModel):
-    name: str
-    yaml_content: str
-    prompt_content: str | None = None
+    """Request body for creating a new agent definition."""
+
+    name: str = Field(
+        ...,
+        description="Unique name for the agent (used as directory name). Must be URL-safe.",
+        examples=["email-summarizer"],
+    )
+    yaml_content: str = Field(
+        ...,
+        description="YAML content defining the agent's configuration (model, tools, capabilities, etc.).",
+    )
+    prompt_content: str | None = Field(
+        default=None,
+        description="Optional prompt template content. If provided, saved as `prompt.md` in the agent directory.",
+    )
 
 
 class AgentUpdateRequest(BaseModel):
-    yaml_content: str | None = None
-    prompt_content: str | None = None
+    """Request body for updating an existing agent definition."""
+
+    yaml_content: str | None = Field(
+        default=None,
+        description="Updated YAML configuration. If omitted, the existing YAML is preserved.",
+    )
+    prompt_content: str | None = Field(
+        default=None,
+        description="Updated prompt template. If omitted, the existing prompt is preserved.",
+    )
 
 
 # ---------------------------------------------------------------------------
 # List
 # ---------------------------------------------------------------------------
 
-@router.get("/")
+@router.get(
+    "/",
+    tags=["Admin: Agents"],
+    summary="List all agents",
+    description="Returns all registered agent definitions with their metadata, including model configuration, "
+    "capabilities, and a flat list of available tools (both MCP and built-in).",
+    response_description="List of agent definitions with metadata and tool names.",
+)
 async def list_agents(request: Request):
-    """List all agent definitions."""
     factory = request.app.state.agent_factory
     agents_dir = Path(request.app.state.settings.agents_dir).resolve()
     agents = []
@@ -80,9 +106,15 @@ async def list_agents(request: Request):
 # Detail
 # ---------------------------------------------------------------------------
 
-@router.get("/{agent_name}")
+@router.get(
+    "/{agent_name}",
+    tags=["Admin: Agents"],
+    summary="Get agent details",
+    description="Returns the full agent definition including raw YAML configuration, prompt template content, "
+    "and the parsed definition object. Useful for editing agents in the UI.",
+    response_description="Agent name, raw YAML, prompt content, and parsed definition.",
+)
 async def get_agent(agent_name: str, request: Request):
-    """Get full agent definition including YAML and prompt content."""
     agents_dir = Path(request.app.state.settings.agents_dir).resolve()
     detail = get_agent_detail(agents_dir, agent_name)
     if not detail:
@@ -103,9 +135,15 @@ async def get_agent(agent_name: str, request: Request):
 # Create
 # ---------------------------------------------------------------------------
 
-@router.post("/")
+@router.post(
+    "/",
+    tags=["Admin: Agents"],
+    summary="Create a new agent",
+    description="Creates a new agent definition by saving the YAML config and optional prompt template "
+    "to the agents directory. The agent factory is reloaded automatically to pick up the new definition.",
+    response_description="Confirmation with the created agent's parsed definition.",
+)
 async def create_agent(req: AgentCreateRequest, request: Request):
-    """Create a new agent definition."""
     agents_dir = Path(request.app.state.settings.agents_dir).resolve()
     factory = request.app.state.agent_factory
 
@@ -125,9 +163,16 @@ async def create_agent(req: AgentCreateRequest, request: Request):
 # Update
 # ---------------------------------------------------------------------------
 
-@router.put("/{agent_name}")
+@router.put(
+    "/{agent_name}",
+    tags=["Admin: Agents"],
+    summary="Update an agent",
+    description="Updates an existing agent definition. Only the provided fields are overwritten — "
+    "omit `yaml_content` or `prompt_content` to keep the existing values. "
+    "The agent factory is reloaded automatically after saving.",
+    response_description="Confirmation with the updated agent's parsed definition.",
+)
 async def update_agent(agent_name: str, req: AgentUpdateRequest, request: Request):
-    """Update an existing agent definition."""
     agents_dir = Path(request.app.state.settings.agents_dir).resolve()
     factory = request.app.state.agent_factory
 
@@ -152,9 +197,15 @@ async def update_agent(agent_name: str, req: AgentUpdateRequest, request: Reques
 # Delete
 # ---------------------------------------------------------------------------
 
-@router.delete("/{agent_name}")
+@router.delete(
+    "/{agent_name}",
+    tags=["Admin: Agents"],
+    summary="Delete an agent",
+    description="Permanently removes an agent definition and its directory (YAML config + prompt template). "
+    "This does not affect already-running sessions that use this agent.",
+    response_description="Confirmation with the deleted agent name.",
+)
 async def delete_agent(agent_name: str, request: Request):
-    """Delete an agent definition."""
     agents_dir = Path(request.app.state.settings.agents_dir).resolve()
     factory = request.app.state.agent_factory
 

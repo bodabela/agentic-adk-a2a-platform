@@ -12,9 +12,16 @@ logger = get_logger("sessions")
 router = APIRouter()
 
 
-@router.get("/")
+@router.get(
+    "/",
+    tags=["Admin: Sessions"],
+    summary="List all sessions",
+    description="Returns all persisted ADK sessions with derived status. Sessions are sorted with "
+    "running sessions first, then by last update time (descending). "
+    "Status is derived from whether an asyncio task is still active for the session.",
+    response_description="List of sessions with status, event counts, and timestamps.",
+)
 async def list_sessions(request: Request):
-    """List all persisted ADK sessions with derived status."""
     session_manager = request.app.state.session_manager
     sessions = await session_manager.list_sessions()
 
@@ -47,9 +54,16 @@ async def list_sessions(request: Request):
     return {"sessions": result}
 
 
-@router.post("/{session_id}/stop")
+@router.post(
+    "/{session_id}/stop",
+    tags=["Admin: Sessions"],
+    summary="Stop a running session",
+    description="Cancels the asyncio task associated with a running session. The session's ADK state "
+    "is preserved in the database — only the execution is stopped. "
+    "Returns 404 if no running task is found, or 409 if the task already finished.",
+    response_description="Confirmation with session and task IDs.",
+)
 async def stop_session(session_id: str, request: Request):
-    """Stop a running session by cancelling its asyncio task."""
     session_manager = request.app.state.session_manager
 
     # Find the task_id that maps to this session_id
@@ -72,9 +86,16 @@ async def stop_session(session_id: str, request: Request):
     raise HTTPException(status_code=409, detail="Task already finished")
 
 
-@router.delete("/{session_id}")
+@router.delete(
+    "/{session_id}",
+    tags=["Admin: Sessions"],
+    summary="Delete a session",
+    description="Permanently removes a completed or failed session from the database. "
+    "Running sessions cannot be deleted — stop them first using the stop endpoint. "
+    "All session events and state are removed.",
+    response_description="Confirmation with the deleted session ID.",
+)
 async def delete_session(session_id: str, request: Request):
-    """Delete a completed/failed session from the database."""
     session_manager = request.app.state.session_manager
 
     # Don't allow deleting running sessions
