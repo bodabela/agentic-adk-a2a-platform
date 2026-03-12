@@ -66,13 +66,13 @@ A **flow** egy YAML fájlban definiált, többlépéses állapotgép. A task-kal
 
 ### 2.3 Agent (Ágens)
 
-Az **ágens** egy önálló, telepíthető modul, amely LLM-eket és eszközöket használva hajt végre feladatokat. Minden ágens rendelkezik:
+Az **ágens** egy önálló modul, amely LLM-eket és eszközöket használva hajt végre feladatokat. Minden ágens a `projects/<projekt>/agents/<agent_name>/` könyvtárban található, és a következő fájlokból áll:
 
-- **module.yaml**: képességek, eszközök, konfiguráció
-- **System prompt**: az ágens viselkedési utasításai
-- **Eszközök (tools)**: MCP protokollon elérhető lokális vagy távoli eszközök
+- **agent.yaml**: ágens konfiguráció (név, modell, képességek, eszközök)
+- **prompts/system_prompt.md**: az ágens viselkedési utasításai
+- **tools/mcp_server.py**: MCP protokollon elérhető lokális eszközök (opcionális)
 
-Az ágensek az A2A (Agent-to-Agent) protokollon kommunikálnak egymással és a root ágenssel.
+Az ágensek a Google ADK-n keresztül futnak, a root ágens sub-agentekként koordinálja őket.
 
 ### 2.4 LLM Provider (Nyelvi modell szolgáltató)
 
@@ -394,18 +394,64 @@ A **root ágens** a központi orkesztrátor:
 
 ## 6. Konfiguráció
 
-### 6.1 Környezeti változók
+### 6.1 Projekt struktúra
+
+A platform **multi-projekt** felépítésű. Minden projekt a `projects/` könyvtárban található, saját ágensekkel, root ágensekkel és flow-kkal:
+
+```
+projects/
+├── personal_assistant/        # Alapértelmezett projekt
+│   ├── agents/                # Ágens definíciók
+│   │   ├── calendar_agent/
+│   │   │   ├── agent.yaml           # Ágens YAML konfiguráció
+│   │   │   ├── prompts/
+│   │   │   │   └── system_prompt.md  # System prompt
+│   │   │   └── tools/
+│   │   │       └── mcp_server.py     # MCP eszközök
+│   │   ├── email_agent/
+│   │   ├── research_agent/
+│   │   └── ...
+│   ├── root_agents/           # Root orkesztrátor definíciók
+│   │   └── personal_assistant.root.yaml
+│   └── flows/                 # Flow definíciók
+│       ├── meeting_prep.flow.yaml
+│       └── schedule_meeting.flow.yaml
+└── another_project/           # Új projekt hozzáadása
+    ├── agents/
+    ├── root_agents/
+    └── flows/
+```
+
+Az aktív projekt az `APP_PROJECT` környezeti változóval választható ki (lásd 6.2).
+
+### 6.2 Környezeti változók
 
 A `.env` fájlban (vagy az operációs rendszer környezeti változóiban) állítandók:
 
-```
+```env
+# API kulcsok (a modell/árazás konfig a config/llm_providers.yaml fájlban)
 GOOGLE_API_KEY=your-google-api-key
 ANTHROPIC_API_KEY=your-anthropic-api-key
 OPENAI_API_KEY=your-openai-api-key
+
 APP_DEBUG=true
+
+# Aktív projekt kiválasztása (könyvtárnév a projects/ alatt)
+APP_PROJECT=personal_assistant
 ```
 
-### 6.2 LLM providerek konfigurálása
+**Projekt váltása:**
+
+```bash
+# .env fájlban:
+APP_PROJECT=another_project
+
+# Vagy környezeti változóval:
+set APP_PROJECT=another_project      # Windows
+export APP_PROJECT=another_project   # Linux/macOS
+```
+
+### 6.3 LLM providerek konfigurálása
 
 A `config/llm_providers.yaml` fájlban:
 
@@ -427,36 +473,85 @@ providers:
         max_tokens: 65536
 ```
 
-### 6.3 Flow-k hozzáadása
+### 6.4 Új ágens hozzáadása
 
-Új flow létrehozásához hozzon létre egy `.flow.yaml` fájlt a `flows/` könyvtárban. A flow automatikusan megjelenik a Flows oldal legördülő menüjében.
+Hozzon létre egy új könyvtárat a projekt `agents/` mappájában:
+
+```
+projects/<projekt>/agents/<agent_name>/
+├── agent.yaml
+├── prompts/
+│   └── system_prompt.md
+└── tools/                  # opcionális
+    └── mcp_server.py
+```
+
+Az ágens automatikusan megjelenik a felületen és használható flow-kban és task-okban. A webes felületen az **Agents** oldalon is létrehozható a **+ New** gombbal.
+
+### 6.5 Flow-k hozzáadása
+
+Új flow létrehozásához hozzon létre egy `.flow.yaml` fájlt a projekt `flows/` könyvtárában. A flow automatikusan megjelenik a Flows oldal legördülő menüjében.
 
 ---
 
 ## 7. Indítás
 
-### Fejlesztői mód
+### Docker (ajánlott)
+
+**Éles mód** (statikus frontend build):
 
 ```bash
-# Backend indítása
+# Windows — egy kattintás:
+run.cmd
+
+# Linux / macOS:
+docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build -d
+```
+
+**Fejlesztői mód** (hot reload backend + frontend):
+
+```bash
+# Windows — egy kattintás:
+run-dev.cmd
+
+# Linux / macOS:
+docker compose up --build -d
+```
+
+Fejlesztői módban a `backend/src/` és `frontend/src/` mappák be vannak mount-olva a konténerekbe, így a kódmódosítások automatikus újraindítást (uvicorn `--reload`) és HMR-t (Vite) aktiválnak.
+
+A `run.cmd` és `run-dev.cmd` szkriptek automatikusan:
+- Ellenőrzik a Docker elérhetőségét
+- Megkeresik a projekt könyvtárat
+- Létrehozzák a `.env` fájlt, ha nincs (`.env.example`-ból)
+- Elindítják a szolgáltatásokat
+- Megvárják, amíg a backend egészséges lesz
+- Leállítják a szolgáltatásokat bármilyen gombnyomásra
+
+### Helyi futtatás (Docker nélkül)
+
+```bash
+# Telepítés
+cd backend && pip install -e ".[dev]"
+cd frontend && pnpm install
+
+# Backend indítása (1. terminál)
 cd backend
-pip install -r requirements.txt
 uvicorn src.main:app --reload --port 8000
 
-# Frontend indítása (külön terminálban)
+# Frontend indítása (2. terminál)
 cd frontend
-npm install
-npm run dev
+pnpm dev
 ```
 
-### Docker
+### Elérhetőség
 
-```bash
-docker-compose up
-```
-
-A frontend elérhető: `http://localhost:5173`
-A backend API: `http://localhost:8000`
+| Szolgáltatás | URL |
+|-------------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8000 |
+| Swagger UI | http://localhost:8000/docs |
+| SSE Stream | http://localhost:8000/api/events/stream |
 
 ---
 
@@ -471,5 +566,14 @@ A backend API: `http://localhost:8000`
 | POST | `/api/flows/start` | Flow indítása |
 | POST | `/api/flows/interact` | Emberi válasz beküldése flow-nak |
 | GET | `/api/flows/active` | Aktív flow-k listája |
-| GET | `/api/events/stream` | SSE eseményfolyam |
+| GET | `/api/agents/` | Ágens definíciók listázása |
+| GET | `/api/agents/{name}` | Ágens részletek (YAML + prompt + definíció) |
+| POST | `/api/agents/` | Ágens létrehozása |
+| PUT | `/api/agents/{name}` | Ágens módosítása |
+| DELETE | `/api/agents/{name}` | Ágens törlése |
+| GET | `/api/root-agents/` | Root ágens definíciók |
 | GET | `/api/llm/providers` | LLM providerek és modellek |
+| GET | `/api/tools/` | Összes elérhető MCP és beépített eszköz |
+| GET | `/api/interactions/pending` | Függő emberi interakciók |
+| POST | `/api/interactions/respond` | Válasz küldése interakcióra |
+| GET | `/api/events/stream` | SSE eseményfolyam |

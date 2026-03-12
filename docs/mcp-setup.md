@@ -18,13 +18,16 @@ Az MCP eszközök lehetővé teszik, hogy az ágensek külső toolokat használj
 ### Fájlstruktúra
 
 ```
-agents/
-  coder_agent/
-    agent.yaml              # MCP konfiguráció itt
-    prompts/
-      system_prompt.md
-  tools/                    # Megosztott MCP szerverek
-    mcp_server.py
+projects/<projekt>/
+  agents/
+    coder_agent/
+      agent.yaml              # MCP konfiguráció itt
+      prompts/
+        system_prompt.md
+      tools/
+        mcp_server.py         # Ágens-specifikus MCP szerver
+    tools/                    # Megosztott MCP szerverek
+      mcp_server.py
 ```
 
 ---
@@ -542,6 +545,6 @@ Minden toolnál látható:
   tool_filter: null               # Tool név whitelist (null = összes)
 ```
 
-**Pydantic modell:** `backend/src/agents/schema.py` → `MCPToolConfig`
+**Pydantic modell:** `backend/src/shared/agents/schema.py` → `MCPToolConfig`
 
-**Factory implementáció:** `backend/src/agents/factory.py` → `_build_mcp_tool()`, `_build_mcp_stdio()`, `_build_mcp_sse()`, `_build_mcp_streamable_http()`
+**Factory implementáció:** `backend/src/shared/agents/factory.py` → `_build_mcp_tool()`, `_build_mcp_stdio()`, `_build_mcp_sse()`, `_build_mcp_streamable_http()`
