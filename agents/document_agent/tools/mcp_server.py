@@ -106,29 +106,111 @@ def get_document(document_id: str) -> dict:
                 "developer experience improvements, and strategic partnerships.\n\n"
                 "## Key Priorities\n\n"
                 "### 1. API Platform Expansion\n"
-                "- Launch v2 REST API with improved rate limiting\n"
+                "- Launch v2 REST API with improved rate limiting (PROJ-101, in progress)\n"
                 "- Add GraphQL support for complex queries\n"
-                "- Implement webhook system for real-time events\n\n"
+                "- Implement webhook system for real-time events (required by Acme Corp)\n"
+                "- Set up Grafana monitoring dashboards (PROJ-105, blocked on PROJ-101)\n\n"
                 "### 2. Developer Experience\n"
-                "- New SDK for Python and TypeScript\n"
+                "- New SDK for Python and TypeScript (PROJ-103 — docs pending)\n"
                 "- Interactive API documentation\n"
                 "- Developer portal with sandbox environment\n\n"
                 "### 3. Strategic Partnerships\n"
-                "- Acme Corp integration (high priority)\n"
+                "- Acme Corp integration (high priority) — technical review next Tuesday, "
+                "pilot kickoff week of the 24th.  See Technical Requirements on Confluence (doc-003).\n"
                 "- TechFlow partnership evaluation\n"
                 "- Open-source community engagement\n\n"
                 "## Timeline\n"
                 "- January: API v2 alpha, SDK development start\n"
                 "- February: API v2 beta, Acme Corp integration kickoff\n"
-                "- March: GA release, partnership reviews\n\n"
+                "- March: GA release, partnership reviews, board presentation (Thursday)\n\n"
                 "## Success Metrics\n"
                 "- API adoption: 50% increase in active API keys\n"
                 "- Developer satisfaction: NPS > 40\n"
-                "- Partnership revenue: 2 signed deals\n"
+                "- Partnership revenue: 2 signed deals (Acme Corp + 1 TBD)\n"
             ),
             "last_modified": (now - timedelta(days=3)).isoformat(),
             "modified_by": "Kovács Péter",
-            "word_count": 180,
+            "word_count": 210,
+        },
+        "doc-003": {
+            "document_id": "doc-003",
+            "title": "Acme Corp Partnership — Technical Requirements",
+            "source": "confluence",
+            "content": (
+                "# Acme Corp Partnership — Technical Requirements\n\n"
+                "**Author:** Tóth László  |  **Last updated:** 2 days ago  |  "
+                "**Status:** Under review\n\n"
+                "## Overview\n"
+                "This document outlines the technical requirements for the Acme Corp "
+                "integration partnership, following the kickoff meeting (see Notion doc-005 "
+                "for meeting notes).  John Smith (VP Engineering, Acme) is the technical lead "
+                "on their side.\n\n"
+                "## Integration Requirements\n\n"
+                "### Authentication\n"
+                "- OAuth 2.0 with PKCE flow (⚠️ fix PROJ-102 token refresh bug first)\n"
+                "- API keys for server-to-server communication\n"
+                "- Token refresh must be seamless — Acme's certification suite tests this\n\n"
+                "### API Endpoints\n"
+                "- REST API v2 endpoints (depends on PROJ-101 rate limiting completion)\n"
+                "- Must support `RateLimit-*` headers per RFC 6585\n"
+                "- GraphQL endpoint for complex data queries (future phase)\n\n"
+                "### Webhooks\n"
+                "- HMAC-SHA256 signed payloads\n"
+                "- Exponential-backoff retries\n"
+                "- Real-time event notifications for workflow triggers\n"
+                "- Webhook integration PR: PROJ-104 (pending code review)\n\n"
+                "### Monitoring\n"
+                "- Grafana dashboards for partner API usage (PROJ-105, blocked on PROJ-101)\n"
+                "- SLA: p99 latency < 500 ms, uptime > 99.9%\n"
+                "- Current incident: p99 > 2 s spike — see #incidents on Slack\n\n"
+                "## Timeline\n"
+                "- Technical integration review: next Tuesday 10 AM CET (from John Smith's email)\n"
+                "- Contract review: next Wednesday 3 PM CET\n"
+                "- Pilot kickoff: week of the 24th\n\n"
+                "## Contacts\n"
+                "- John Smith — VP Engineering, Acme Corp\n"
+                "- Sarah Chen — CEO, Acme Corp\n"
+                "- Szabó Gábor — our DevOps lead for the integration\n"
+                "- Varga Eszter — partnership manager\n"
+            ),
+            "last_modified": (now - timedelta(days=2)).isoformat(),
+            "modified_by": "Tóth László",
+            "word_count": 260,
+        },
+        "doc-005": {
+            "document_id": "doc-005",
+            "title": "Meeting Notes — Acme Corp Kickoff",
+            "source": "notion",
+            "content": (
+                "# Meeting Notes — Acme Corp Kickoff\n\n"
+                "**Date:** yesterday  |  **Author:** Varga Eszter  |  "
+                "**Attendees:** Varga Eszter, Tóth László, John Smith (Acme), Sarah Chen (Acme)\n\n"
+                "## Summary\n"
+                "Productive kickoff meeting with Acme Corp.  Both teams aligned on the integration "
+                "scope and timeline.  John Smith sent a follow-up email (mail-003) with confirmed "
+                "next steps.\n\n"
+                "## Key Decisions\n"
+                "1. Technical integration review scheduled for next Tuesday 10 AM CET\n"
+                "   - Our side: Szabó Gábor + API team\n"
+                "   - Acme side: John Smith + Sarah Chen\n"
+                "2. Contract review next Wednesday 3 PM CET\n"
+                "3. Pilot kickoff targeting week of the 24th\n\n"
+                "## Open Items\n"
+                "- [ ] Fix auth token refresh bug (PROJ-102) — blocks Acme certification\n"
+                "- [ ] Complete API rate limiting (PROJ-101) — Acme requires RFC 6585 headers\n"
+                "- [ ] Review webhook integration PR (PROJ-104) — Acme needs this for pilot\n"
+                "- [ ] Prepare demo for Thursday client review (evt-003)\n\n"
+                "## Action Items\n"
+                "| Owner | Action | Deadline |\n"
+                "|-------|--------|----------|\n"
+                "| Tóth László | Update Technical Requirements doc (doc-003) | Today |\n"
+                "| Szabó Gábor | Prepare integration test environment | Next Monday |\n"
+                "| Varga Eszter | Confirm review times with Acme via #acme-partnership | Today |\n"
+                "| John Smith | Send Partnership Proposal v2 (attached to mail-003) | Done |\n"
+            ),
+            "last_modified": (now - timedelta(days=1)).isoformat(),
+            "modified_by": "Varga Eszter",
+            "word_count": 230,
         },
     }
     doc = mock_docs.get(document_id)

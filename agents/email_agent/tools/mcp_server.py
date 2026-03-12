@@ -128,8 +128,9 @@ def get_email(email_id: str) -> dict:
                 "Key points that need your sign-off:\n"
                 "1. Revenue figures for the Platform division\n"
                 "2. Customer acquisition costs\n"
-                "3. Sprint velocity metrics\n\n"
-                "The board presentation is scheduled for Thursday, so we need final numbers by Wednesday morning.\n\n"
+                "3. Sprint velocity metrics (Sprint 23 retro notes are on Notion if you need context)\n\n"
+                "The board presentation is scheduled for Thursday, so we need final numbers by Wednesday morning.\n"
+                "I've also updated the Q1 Platform Strategy doc on Google Drive — Kovács Péter reviewed it yesterday.\n\n"
                 "Thanks,\nLászló"
             ),
             "attachments": [
@@ -149,13 +150,17 @@ def get_email(email_id: str) -> dict:
             "date": (now - timedelta(hours=5)).isoformat(),
             "body": (
                 "Hi,\n\n"
-                "I've added the new feature requests to the agenda. Can you also include the tech debt items?\n\n"
+                "I've added the new feature requests to the Sprint 24 planning agenda.  "
+                "Can you also include the tech debt items?\n\n"
                 "Here's what I have so far:\n"
                 "1. Feature: User dashboard redesign (45 min)\n"
-                "2. Feature: API rate limiting (30 min)\n"
-                "3. Bug triage from last sprint (20 min)\n\n"
+                "2. Feature: API rate limiting — PROJ-101 (30 min)\n"
+                "3. Bug triage: auth token refresh — PROJ-102 is critical, should be first (20 min)\n\n"
+                "The sprint planning meeting is at 9 AM in Meeting Room A (calendar invite sent).  "
+                "Péter and Gábor are also attending.\n\n"
                 "I think we should also schedule a separate meeting for the tech debt discussion — "
-                "maybe Thursday at 2 PM? Let me know if that works.\n\n"
+                "maybe Thursday at 2 PM?  But check: we already have the Acme Corp client review "
+                "at 2 PM that day.  Let me know if Friday works instead.\n\n"
                 "Thanks,\nAnna"
             ),
             "attachments": [],
@@ -172,15 +177,21 @@ def get_email(email_id: str) -> dict:
             "date": (now - timedelta(days=1)).isoformat(),
             "body": (
                 "Hi,\n\n"
-                "Thank you for the productive meeting yesterday. As discussed, here are the next steps:\n\n"
+                "Thank you for the productive meeting yesterday.  Varga Eszter sent me the "
+                "kickoff meeting notes (Notion) — great summary.\n\n"
+                "As discussed, here are the next steps:\n\n"
                 "1. Technical integration review — let's schedule a call for next Tuesday at 10 AM (CET) "
                 "with your API team and our integration engineers.\n"
-                "   Attendees: you, Szabó Gábor, myself, and Sarah Chen from our side.\n\n"
+                "   Attendees: you, Szabó Gábor, myself, and Sarah Chen from our side.\n"
+                "   Please review the Technical Requirements doc on Confluence beforehand.\n\n"
                 "2. Contract review meeting — our legal team proposed next Wednesday at 3 PM (CET).\n"
                 "   Attendees: you, John Smith, Maria Lopez (AcmeCorp Legal).\n\n"
-                "3. Pilot kickoff — targeting the week of the 24th, exact date TBD.\n\n"
-                "Could you confirm these times work on your end?\n\n"
-                "Best regards,\nJohn Smith\nVP Partnerships, AcmeCorp"
+                "3. Pilot kickoff — targeting the week of the 24th, exact date TBD.\n"
+                "   We need the webhook integration PR (your task board item PROJ-104) reviewed first.\n\n"
+                "Could you confirm these times work on your end?  "
+                "I see you have a Client Review on your calendar this week — happy to use that slot "
+                "for a preliminary walkthrough.\n\n"
+                "Best regards,\nJohn Smith\nVP of Engineering, Acme Corp"
             ),
             "attachments": [
                 {"name": "Partnership_Proposal_v2.pdf", "size": "1.2 MB"},
@@ -221,11 +232,16 @@ def get_email(email_id: str) -> dict:
             "date": (now - timedelta(days=2)).isoformat(),
             "body": (
                 "Hey,\n\n"
-                "I noticed the API endpoint for the new feature is returning 500 errors intermittently.\n\n"
-                "Can you check the logs when you get a chance? I think it might be related to the "
-                "database connection pool changes we made last week.\n\n"
-                "Also — can we set up a quick 30-minute debugging session tomorrow morning? "
-                "Maybe around 9:30 AM? I'll share my screen and walk you through what I'm seeing.\n\n"
+                "I noticed the API v2 endpoint for token refresh is returning 500 errors intermittently.  "
+                "I've opened PROJ-102 as critical — users report 401 errors during long sessions.\n\n"
+                "Can you check the logs when you get a chance?  I think it might be related to the "
+                "database connection pool changes we made last week.  The #incidents channel on Slack "
+                "also flagged a latency spike (p99 > 2 s) about 30 minutes ago — could be connected.\n\n"
+                "Also — can we set up a quick 30-minute debugging session tomorrow morning?  "
+                "Maybe around 9:30 AM, right after Sprint Planning?  I'll share my screen and "
+                "walk you through what I'm seeing.\n\n"
+                "Note: this might block the Acme Corp integration pilot (PROJ-104) if we don't fix "
+                "it soon — their certification suite tests token refresh flows.\n\n"
                 "Thanks,\nPéter"
             ),
             "attachments": [],

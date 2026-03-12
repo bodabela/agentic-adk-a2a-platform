@@ -52,7 +52,11 @@ export function AgentPanel({ activeAgentName = '' }: { activeAgentName?: string 
       <h3 style={{ color: '#94a3b8', fontSize: '1.125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
         Available Agents
       </h3>
-      {agents.map((agent) => {
+      {[...agents].sort((a, b) => {
+        if (a.name === activeAgentName) return -1;
+        if (b.name === activeAgentName) return 1;
+        return 0;
+      }).map((agent) => {
         const isActive = activeAgentName === agent.name;
         return (
         <div

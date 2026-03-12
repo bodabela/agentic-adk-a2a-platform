@@ -22,7 +22,7 @@ def _mock_tasks() -> list[dict]:
         {
             "task_id": "PROJ-101",
             "title": "Implement API v2 rate limiting",
-            "description": "Add configurable rate limiting to all v2 API endpoints",
+            "description": "Add configurable rate limiting to all v2 API endpoints.  Must follow RFC 6585 (RateLimit-* headers).  Required by Acme Corp partnership (doc-003).  Blocks PROJ-105 (monitoring dashboards).",
             "project": "Platform",
             "status": "in_progress",
             "priority": "high",
@@ -35,7 +35,7 @@ def _mock_tasks() -> list[dict]:
         {
             "task_id": "PROJ-102",
             "title": "Fix authentication token refresh bug",
-            "description": "Users report intermittent 401 errors when tokens expire during long sessions",
+            "description": "Users report intermittent 401 errors when tokens expire during long sessions.  Root cause: race condition in token refresh + DB connection pool exhaustion (see #incidents latency spike and mail-005).  Blocks Acme Corp certification suite.",
             "project": "Platform",
             "status": "open",
             "priority": "critical",
@@ -48,7 +48,7 @@ def _mock_tasks() -> list[dict]:
         {
             "task_id": "PROJ-103",
             "title": "Write SDK documentation for Python client",
-            "description": "Create comprehensive docs for the new Python SDK including examples and tutorials",
+            "description": "Create comprehensive docs for the new Python SDK including examples and tutorials.  Use API v2 staging (deployed by Horváth Dávid) for live examples.  See API v2 Design Document on Confluence (doc-006).",
             "project": "Platform",
             "status": "open",
             "priority": "medium",
@@ -61,7 +61,7 @@ def _mock_tasks() -> list[dict]:
         {
             "task_id": "PROJ-104",
             "title": "Review Acme Corp integration PR",
-            "description": "Code review for the Acme Corp webhook integration pull request",
+            "description": "Code review for the Acme Corp webhook integration PR.  HMAC-SHA256 signing per Acme requirements (doc-003).  John Smith needs this before pilot kickoff (mail-003).  Technical review next Tuesday.",
             "project": "Partnerships",
             "status": "open",
             "priority": "high",
@@ -74,7 +74,7 @@ def _mock_tasks() -> list[dict]:
         {
             "task_id": "PROJ-105",
             "title": "Set up monitoring dashboards for v2 API",
-            "description": "Create Grafana dashboards for API v2 metrics: latency, error rates, throughput",
+            "description": "Create Grafana dashboards for API v2 metrics: latency (p50/p95/p99), error rates, throughput, connection pool utilisation.  The #incidents latency spike proves we need this urgently.  Blocked by PROJ-101 (rate limiting).",
             "project": "Platform",
             "status": "blocked",
             "priority": "medium",
@@ -133,17 +133,85 @@ def get_task(task_id: str) -> dict:
     if not task:
         return {"status": "error", "message": f"Task not found: {task_id}"}
 
-    task["comments"] = [
+    # Task-specific comments that reference other agents' data
+    task_comments = {
+        "PROJ-101": [
+            {
+                "author": "Kovács Péter",
+                "date": (now - timedelta(days=1)).isoformat(),
+                "text": (
+                    "Rate limiting middleware is in place, testing now.  "
+                    "Kiss Márta's SDK PR #342 covers the client-side headers (see #platform-dev).  "
+                    "Once this is done, Horváth Dávid can unblock PROJ-105 (dashboards).  "
+                    "Acme Corp requires RFC 6585 compliance — see Technical Requirements doc (doc-003)."
+                ),
+            },
+        ],
+        "PROJ-102": [
+            {
+                "author": "Kovács Péter",
+                "date": (now - timedelta(hours=2)).isoformat(),
+                "text": (
+                    "Root cause identified: race condition in token refresh when DB connection "
+                    "pool is exhausted.  Same issue causing the latency spike in #incidents.  "
+                    "Emailed details (mail-005).  Fix: implement single-flight refresh pattern "
+                    "with TTL buffer.  ⚠️ Blocks Acme Corp certification (their suite tests "
+                    "token refresh flows)."
+                ),
+            },
+            {
+                "author": "Nagy Anna",
+                "date": (now - timedelta(hours=1)).isoformat(),
+                "text": "Escalating to critical — this is blocking the Acme Corp pilot.  Added to Sprint Planning agenda (9 AM, evt-001).",
+            },
+        ],
+        "PROJ-103": [
+            {
+                "author": "Horváth Dávid",
+                "date": (now - timedelta(days=2)).isoformat(),
+                "text": "I've pushed the API v2 staging deployment — you can use it as a reference for SDK examples.  See the API v2 Design Document on Confluence (doc-006).",
+            },
+        ],
+        "PROJ-104": [
+            {
+                "author": "Varga Eszter",
+                "date": (now - timedelta(hours=6)).isoformat(),
+                "text": (
+                    "John Smith confirmed this is required for the pilot kickoff (week of the 24th).  "
+                    "See his follow-up email (mail-003) and the kickoff meeting notes (doc-005).  "
+                    "Technical integration review is next Tuesday — need this reviewed before then."
+                ),
+            },
+            {
+                "author": "Szabó Gábor",
+                "date": (now - timedelta(hours=3)).isoformat(),
+                "text": "I'll set up the webhook test environment.  Needs HMAC-SHA256 signing per Acme's requirements (doc-003).",
+            },
+        ],
+        "PROJ-105": [
+            {
+                "author": "Horváth Dávid",
+                "date": (now - timedelta(hours=1)).isoformat(),
+                "text": (
+                    "Still blocked on PROJ-101.  The latency incident in #incidents proves "
+                    "we need these dashboards urgently — pool utilisation alerts would have "
+                    "caught the issue earlier.  Template ready: Grafana panels for p50/p95/p99 "
+                    "latency, error rates, and connection pool metrics."
+                ),
+            },
+        ],
+    }
+    task["comments"] = task_comments.get(task_id, [
         {
             "author": "Kovács Péter",
             "date": (now - timedelta(days=1)).isoformat(),
-            "text": "I've started working on this. The rate limiting middleware is in place, testing now.",
+            "text": "Working on this.  Will update in #platform-dev when done.",
         },
-    ]
+    ])
     task["activity"] = [
         {"action": "created", "by": "Nagy Anna", "date": task["created"]},
         {"action": "assigned to me", "by": "Nagy Anna", "date": task["created"]},
-        {"action": "status changed to in_progress", "by": "me", "date": (now - timedelta(days=1)).isoformat()},
+        {"action": "status changed to " + task["status"], "by": "me", "date": (now - timedelta(days=1)).isoformat()},
     ]
     return {"status": "success", "task": task}
 
@@ -283,9 +351,12 @@ def get_my_next_tasks() -> dict:
         "status": "success",
         "next_tasks": tasks,
         "recommendation": (
-            "Focus on PROJ-102 (critical bug, due tomorrow) first, "
-            "then PROJ-104 (Acme Corp review, due in 2 days). "
-            "PROJ-101 is in progress — continue after resolving the critical bug."
+            "Focus on PROJ-102 (critical auth bug, due tomorrow) — it's causing the "
+            "#incidents latency spike and blocks Acme Corp certification.  "
+            "Then PROJ-104 (Acme webhook PR review, due in 2 days) — John Smith needs "
+            "this before the technical integration review next Tuesday (see mail-003).  "
+            "PROJ-101 (rate limiting) is in progress — completing it unblocks PROJ-105 "
+            "(monitoring dashboards, Horváth Dávid)."
         ),
     }
 

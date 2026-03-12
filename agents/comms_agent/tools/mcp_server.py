@@ -52,7 +52,12 @@ def get_channel_messages(channel_id: str, limit: int = 20, since: str = "") -> d
                 "message_id": "msg-001",
                 "author": "Horváth Dávid",
                 "timestamp": (now - timedelta(hours=1)).isoformat(),
-                "text": "The API v2 staging deployment is complete. @me can you run the integration tests?",
+                "text": (
+                    "The API v2 staging deployment is complete.  @me can you run the "
+                    "integration tests?  We need this green before the Acme Corp review "
+                    "this afternoon (evt-003).  My PROJ-105 dashboards are still blocked "
+                    "on PROJ-101 (rate limiting)."
+                ),
                 "is_mention": True,
                 "thread_count": 2,
             },
@@ -60,7 +65,11 @@ def get_channel_messages(channel_id: str, limit: int = 20, since: str = "") -> d
                 "message_id": "msg-002",
                 "author": "Kiss Márta",
                 "timestamp": (now - timedelta(hours=2)).isoformat(),
-                "text": "I've updated the SDK client to handle the new rate limit headers. PR is up: #342",
+                "text": (
+                    "I've updated the SDK client to handle the new rate limit headers "
+                    "(RFC 6585).  PR #342 is up — this covers the client side of PROJ-101.  "
+                    "Also added Retry-After support for 429 responses."
+                ),
                 "is_mention": False,
                 "thread_count": 5,
             },
@@ -68,9 +77,41 @@ def get_channel_messages(channel_id: str, limit: int = 20, since: str = "") -> d
                 "message_id": "msg-003",
                 "author": "Szabó Gábor",
                 "timestamp": (now - timedelta(hours=3)).isoformat(),
-                "text": "FYI: The CI pipeline for the main branch is green again after the flaky test fix.",
+                "text": (
+                    "FYI: The CI pipeline for the main branch is green again after the "
+                    "flaky test fix.  Ready for Sprint Planning at 9 AM.  "
+                    "Also: I'll attend the Acme Corp technical integration review next "
+                    "Tuesday as John Smith requested (see his email)."
+                ),
                 "is_mention": False,
                 "thread_count": 0,
+            },
+        ],
+        "ch-003": [
+            {
+                "message_id": "msg-020",
+                "author": "Varga Eszter",
+                "timestamp": (now - timedelta(hours=4)).isoformat(),
+                "text": (
+                    "@me the Acme team confirmed the technical review for Thursday.  "
+                    "John Smith and Sarah Chen will join from their side.  "
+                    "Can you prepare the demo?  I've updated the kickoff meeting notes "
+                    "on Notion (doc-005)."
+                ),
+                "is_mention": True,
+                "thread_count": 3,
+            },
+            {
+                "message_id": "msg-021",
+                "author": "Tóth László",
+                "timestamp": (now - timedelta(hours=3, minutes=30)).isoformat(),
+                "text": (
+                    "I've updated the Technical Requirements doc on Confluence (doc-003) "
+                    "with the webhook specs.  Please review before the Client Review at "
+                    "2 PM today.  Also — I need your sign-off on Q1 numbers (check my email)."
+                ),
+                "is_mention": False,
+                "thread_count": 1,
             },
         ],
         "ch-005": [
@@ -78,7 +119,11 @@ def get_channel_messages(channel_id: str, limit: int = 20, since: str = "") -> d
                 "message_id": "msg-010",
                 "author": "AlertBot",
                 "timestamp": (now - timedelta(minutes=30)).isoformat(),
-                "text": "🔴 ALERT: API latency spike detected on production (p99 > 2s). @me @Kovács Péter please investigate.",
+                "text": (
+                    "🔴 ALERT: API latency spike detected on production (p99 > 2 s).  "
+                    "@me @Kovács Péter please investigate.  Possibly related to PROJ-102 "
+                    "(auth token refresh bug)."
+                ),
                 "is_mention": True,
                 "thread_count": 4,
             },
@@ -86,7 +131,24 @@ def get_channel_messages(channel_id: str, limit: int = 20, since: str = "") -> d
                 "message_id": "msg-011",
                 "author": "Kovács Péter",
                 "timestamp": (now - timedelta(minutes=20)).isoformat(),
-                "text": "Looking into it. Seems related to the database connection pool. Scaling up now.",
+                "text": (
+                    "Looking into it.  Seems related to the database connection pool "
+                    "changes we made last week — same root cause I emailed about "
+                    "(mail-005).  Scaling up the pool now.  Will need to discuss in "
+                    "Sprint Planning and schedule a post-incident review."
+                ),
+                "is_mention": False,
+                "thread_count": 0,
+            },
+            {
+                "message_id": "msg-012",
+                "author": "Horváth Dávid",
+                "timestamp": (now - timedelta(minutes=10)).isoformat(),
+                "text": (
+                    "This is also why we need PROJ-105 (monitoring dashboards) unblocked.  "
+                    "Once PROJ-101 rate limiting is done I can set up proper Grafana "
+                    "alerts for pool utilisation.  Adding this to the retro agenda."
+                ),
                 "is_mention": False,
                 "thread_count": 0,
             },
@@ -132,8 +194,8 @@ def get_important_messages(since: str = "") -> dict:
                     "channel": "#incidents",
                     "author": "AlertBot",
                     "timestamp": (now - timedelta(minutes=30)).isoformat(),
-                    "text": "🔴 ALERT: API latency spike detected on production. Please investigate.",
-                    "reason": "Incident alert with direct mention",
+                    "text": "🔴 ALERT: API latency spike (p99 > 2 s).  Possibly related to PROJ-102 (auth token refresh bug).  Kovács Péter investigating — DB connection pool.",
+                    "reason": "Incident alert with direct mention — linked to PROJ-102 and Péter's email (mail-005)",
                 },
             ],
             "action_required": [
@@ -142,8 +204,8 @@ def get_important_messages(since: str = "") -> dict:
                     "channel": "#platform-dev",
                     "author": "Horváth Dávid",
                     "timestamp": (now - timedelta(hours=1)).isoformat(),
-                    "text": "Can you run the integration tests on the v2 staging?",
-                    "reason": "Direct mention with action request",
+                    "text": "Run integration tests on v2 staging — needed before Acme Corp review (evt-003) this afternoon.  PROJ-105 dashboards still blocked on PROJ-101.",
+                    "reason": "Direct mention with action request — blocks Acme Corp client review",
                 },
             ],
             "mentions": [
@@ -152,8 +214,8 @@ def get_important_messages(since: str = "") -> dict:
                     "channel": "#acme-partnership",
                     "author": "Varga Eszter",
                     "timestamp": (now - timedelta(hours=4)).isoformat(),
-                    "text": "@me the Acme team confirmed the technical review for Thursday. Can you prepare the demo?",
-                    "reason": "Direct mention in partnership channel",
+                    "text": "Acme team confirmed technical review for Thursday.  John Smith & Sarah Chen attending.  Prepare demo — kickoff notes on Notion (doc-005).",
+                    "reason": "Direct mention in partnership channel — follow-up to John Smith's email (mail-003)",
                 },
             ],
         },
@@ -202,17 +264,18 @@ def summarize_channel(channel_id: str, since: str = "") -> dict:
             "period": "last 24 hours",
             "summary": (
                 "Key updates in #platform-dev:\n"
-                "1. API v2 staging deployment completed successfully (Horváth Dávid)\n"
-                "2. SDK client updated with new rate limit headers - PR #342 (Kiss Márta)\n"
-                "3. CI pipeline fixed after flaky test issue (Szabó Gábor)\n"
-                "4. Integration tests pending for v2 staging"
+                "1. API v2 staging deployment completed (Horváth Dávid) — needs integration tests before Acme Corp review (evt-003)\n"
+                "2. SDK client updated with RFC 6585 rate limit headers — PR #342 (Kiss Márta), covers client side of PROJ-101\n"
+                "3. CI pipeline green again after flaky test fix (Szabó Gábor)\n"
+                "4. PROJ-105 (monitoring dashboards) still blocked on PROJ-101 (rate limiting)"
             ),
             "action_items": [
-                "Run integration tests on v2 staging (assigned to you)",
-                "Review PR #342 for SDK rate limit headers",
+                "Run integration tests on v2 staging before Acme Corp review at 2 PM (assigned to you)",
+                "Review PR #342 for SDK rate limit headers (Kiss Márta)",
             ],
             "decisions": [
                 "Rate limit headers will follow RFC 6585 standard",
+                "Szabó Gábor to attend Acme Corp technical integration review next Tuesday",
             ],
             "message_count": 15,
             "active_participants": 5,
@@ -222,14 +285,15 @@ def summarize_channel(channel_id: str, since: str = "") -> dict:
             "period": "last 24 hours",
             "summary": (
                 "Active incident in #incidents:\n"
-                "1. API latency spike detected (p99 > 2s) - 30 minutes ago\n"
-                "2. Root cause: database connection pool exhaustion\n"
-                "3. Kovács Péter is scaling up the connection pool\n"
-                "4. Status: investigating"
+                "1. API latency spike detected (p99 > 2 s) — 30 minutes ago, likely related to PROJ-102\n"
+                "2. Root cause: database connection pool exhaustion (same issue Kovács Péter emailed about — mail-005)\n"
+                "3. Kovács Péter scaling up the pool; will discuss at Sprint Planning (9 AM)\n"
+                "4. Horváth Dávid notes PROJ-105 (Grafana dashboards) would have caught this — blocked on PROJ-101"
             ),
             "action_items": [
                 "Monitor API latency after connection pool scaling",
-                "Post-incident review to be scheduled",
+                "Post-incident review to be scheduled (add to retro agenda)",
+                "Prioritise PROJ-101 to unblock PROJ-105 monitoring dashboards",
             ],
             "decisions": [],
             "message_count": 8,

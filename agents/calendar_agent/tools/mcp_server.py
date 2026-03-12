@@ -48,7 +48,12 @@ def _mock_events(start_date: str, end_date: str) -> list[dict]:
             "end_time": (start.replace(hour=10, minute=0)).isoformat(),
             "attendees": ["Kovács Péter", "Nagy Anna", "Szabó Gábor"],
             "location": "Meeting Room A / Teams",
-            "description": "Sprint 24 planning - feature prioritization",
+            "description": (
+                "Sprint 24 planning — feature prioritization.  "
+                "Agenda (from Nagy Anna's email): API rate limiting (PROJ-101), "
+                "auth token refresh bug (PROJ-102, critical), dashboard redesign.  "
+                "See Sprint 23 Retro Notes on Notion for carry-over items."
+            ),
             "status": "confirmed",
         },
         {
@@ -58,7 +63,11 @@ def _mock_events(start_date: str, end_date: str) -> list[dict]:
             "end_time": (start.replace(hour=11, minute=30)).isoformat(),
             "attendees": ["Nagy Anna"],
             "location": "Online - Teams",
-            "description": "Weekly sync",
+            "description": (
+                "Weekly sync.  Topics: Q1 deliverables sign-off status "
+                "(Tóth László's email), Sprint 24 velocity concerns, "
+                "Acme Corp partnership timeline."
+            ),
             "status": "confirmed",
         },
         {
@@ -68,7 +77,13 @@ def _mock_events(start_date: str, end_date: str) -> list[dict]:
             "end_time": (start.replace(hour=15, minute=30)).isoformat(),
             "attendees": ["Tóth László", "Varga Eszter", "John Smith (Acme)"],
             "location": "Conference Room B",
-            "description": "Q1 deliverables review with Acme Corp stakeholders",
+            "description": (
+                "Q1 deliverables review with Acme Corp stakeholders.  "
+                "Follow-up from John Smith's partnership email (mail-003).  "
+                "Prep: review Technical Requirements doc on Confluence (doc-003) "
+                "and the webhook integration PR (PROJ-104).  "
+                "Varga Eszter confirmed with the Acme team via #acme-partnership."
+            ),
             "status": "confirmed",
         },
         {
@@ -78,7 +93,11 @@ def _mock_events(start_date: str, end_date: str) -> list[dict]:
             "end_time": (start.replace(hour=17, minute=0)).isoformat(),
             "attendees": ["Kovács Péter", "Nagy Anna", "Szabó Gábor", "Kiss Márta", "Horváth Dávid"],
             "location": "Meeting Room A",
-            "description": "Sprint 23 retrospective",
+            "description": (
+                "Sprint 23 retrospective.  Sprint 23 Retro Notes on Notion (doc-002).  "
+                "Discuss: velocity below average (15 vs 18 avg), latency incident from "
+                "#incidents, and blocked PROJ-105 (monitoring dashboards)."
+            ),
             "status": "tentative",
         },
     ]
@@ -130,7 +149,11 @@ def get_event(event_id: str) -> dict:
                 {"name": "Szabó Gábor", "email": "szabo.gabor@company.hu", "response": "tentative"},
             ],
             "location": "Meeting Room A / Teams",
-            "description": "Sprint 24 planning - feature prioritization",
+            "description": (
+                "Sprint 24 planning — feature prioritization.  "
+                "Agenda: API rate limiting (PROJ-101), auth token refresh bug (PROJ-102, critical), "
+                "dashboard redesign.  See Nagy Anna's email for full agenda."
+            ),
             "organizer": "Kovács Péter",
             "created": (today - timedelta(days=5)).isoformat(),
             "recurring": True,
