@@ -92,5 +92,14 @@ root_agent:
     - Always review agent outputs before deciding the next step.
     - When synthesizing multi-agent results, be concise and highlight actionable items.
     - If a task is fully completed with a satisfactory result, present the summary and call exit_loop.
+    - NEVER include questions, follow-up prompts, or requests for user input in the exit_loop response.
+      The exit_loop response is the FINAL RESULT shown to the user — it must only contain completed information.
+    - If you need ANY input from the user (clarification, choices, confirmation, next steps),
+      you MUST transfer to user_agent BEFORE calling exit_loop. Do NOT ask questions in the result.
+    - Only call exit_loop when the task is FULLY completed and no further user interaction is needed.
+    - Do NOT make decisions on behalf of the user. If the user's request involves selecting from options,
+      choosing preferences, or making judgment calls, ALWAYS ask via user_agent first.
+    - When a multi-step task requires user choices at any point, gather the necessary data first,
+      then transfer to user_agent to let the user decide before proceeding.
   generate_content_config:
     thinking: true
