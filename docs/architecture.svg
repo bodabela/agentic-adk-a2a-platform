@@ -1,0 +1,206 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 680" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="frontendGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="backendGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#4f46e5"/>
+    </linearGradient>
+    <linearGradient id="infraGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="obsGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <linearGradient id="channelGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ec4899"/>
+      <stop offset="100%" style="stop-color:#db2777"/>
+    </linearGradient>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="680" rx="12" fill="url(#bgGrad)"/>
+
+  <!-- Title -->
+  <text x="450" y="38" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="700" letter-spacing="0.5">Agentic ADK/A2A Platform</text>
+  <text x="450" y="56" text-anchor="middle" fill="#94a3b8" font-size="11">Architecture Overview</text>
+
+  <!-- ==================== FRONTEND ROW ==================== -->
+  <rect x="30" y="72" width="840" height="72" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <text x="50" y="93" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="1">FRONTEND</text>
+
+  <rect x="50" y="100" width="110" height="34" rx="6" fill="url(#frontendGrad)" filter="url(#shadow)"/>
+  <text x="105" y="121" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">React 19</text>
+
+  <rect x="172" y="100" width="110" height="34" rx="6" fill="url(#frontendGrad)" filter="url(#shadow)"/>
+  <text x="227" y="121" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Zustand</text>
+
+  <rect x="294" y="100" width="110" height="34" rx="6" fill="url(#frontendGrad)" filter="url(#shadow)"/>
+  <text x="349" y="121" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">SSE Client</text>
+
+  <rect x="416" y="100" width="130" height="34" rx="6" fill="url(#frontendGrad)" filter="url(#shadow)"/>
+  <text x="481" y="121" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">SVG Diagrams</text>
+
+  <rect x="558" y="100" width="130" height="34" rx="6" fill="url(#frontendGrad)" filter="url(#shadow)"/>
+  <text x="623" y="121" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Cost Dashboard</text>
+
+  <rect x="700" y="100" width="150" height="34" rx="6" fill="url(#frontendGrad)" filter="url(#shadow)"/>
+  <text x="775" y="121" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Trace Deep Links</text>
+
+  <!-- SSE + REST arrow -->
+  <line x1="450" y1="144" x2="450" y2="168" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="470" y="160" fill="#64748b" font-size="9">SSE + REST</text>
+
+  <!-- ==================== BACKEND LAYER ==================== -->
+  <rect x="30" y="168" width="840" height="310" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <text x="50" y="189" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="1">BACKEND (FastAPI)</text>
+
+  <!-- API Layer -->
+  <rect x="50" y="198" width="800" height="34" rx="6" fill="url(#backendGrad)" opacity="0.9" filter="url(#shadow)"/>
+  <text x="450" y="219" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">REST API &amp; SSE Streaming &amp; A2A Protocol Endpoints</text>
+
+  <!-- Core modules row 1 -->
+  <rect x="50" y="246" width="185" height="54" rx="8" fill="url(#coreGrad)" filter="url(#shadow)"/>
+  <text x="142" y="268" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Agent Factory</text>
+  <text x="142" y="283" text-anchor="middle" fill="#c7d2fe" font-size="9">YAML &#8594; ADK Agent</text>
+
+  <rect x="250" y="246" width="185" height="54" rx="8" fill="url(#coreGrad)" filter="url(#shadow)"/>
+  <text x="342" y="268" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Root Agent</text>
+  <text x="342" y="283" text-anchor="middle" fill="#c7d2fe" font-size="9">Loop Orchestration</text>
+
+  <rect x="450" y="246" width="185" height="54" rx="8" fill="url(#coreGrad)" filter="url(#shadow)"/>
+  <text x="542" y="268" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Flow Engine</text>
+  <text x="542" y="283" text-anchor="middle" fill="#c7d2fe" font-size="9">State Machine DSL</text>
+
+  <rect x="650" y="246" width="200" height="54" rx="8" fill="url(#channelGrad)" filter="url(#shadow)"/>
+  <text x="750" y="268" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Interaction Broker</text>
+  <text x="750" y="283" text-anchor="middle" fill="#fce7f3" font-size="9">Web / Teams / WhatsApp</text>
+
+  <!-- Core modules row 2 -->
+  <rect x="50" y="314" width="185" height="54" rx="8" fill="url(#coreGrad)" filter="url(#shadow)"/>
+  <text x="142" y="336" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Event Bus</text>
+  <text x="142" y="351" text-anchor="middle" fill="#c7d2fe" font-size="9">Async Pub/Sub + SSE</text>
+
+  <rect x="250" y="314" width="185" height="54" rx="8" fill="url(#coreGrad)" filter="url(#shadow)"/>
+  <text x="342" y="336" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Cost Tracker</text>
+  <text x="342" y="351" text-anchor="middle" fill="#c7d2fe" font-size="9">Per-Token Pricing</text>
+
+  <rect x="450" y="314" width="185" height="54" rx="8" fill="url(#coreGrad)" filter="url(#shadow)"/>
+  <text x="542" y="336" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Session Manager</text>
+  <text x="542" y="351" text-anchor="middle" fill="#c7d2fe" font-size="9">SQLite Persistence</text>
+
+  <rect x="650" y="314" width="200" height="54" rx="8" fill="url(#coreGrad)" filter="url(#shadow)"/>
+  <text x="750" y="336" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Tracing</text>
+  <text x="750" y="351" text-anchor="middle" fill="#c7d2fe" font-size="9">OTel Callbacks + Export</text>
+
+  <!-- ADK + MCP row -->
+  <rect x="50" y="384" width="395" height="42" rx="6" fill="#312e81" stroke="#4338ca" stroke-width="1" filter="url(#shadow)"/>
+  <text x="247" y="405" text-anchor="middle" fill="#a5b4fc" font-size="10" font-weight="600" letter-spacing="0.5">GOOGLE ADK</text>
+  <text x="247" y="418" text-anchor="middle" fill="#818cf8" font-size="9">Agent Runtime / LoopAgent / ToolContext</text>
+
+  <rect x="460" y="384" width="190" height="42" rx="6" fill="#312e81" stroke="#4338ca" stroke-width="1" filter="url(#shadow)"/>
+  <text x="555" y="405" text-anchor="middle" fill="#a5b4fc" font-size="10" font-weight="600" letter-spacing="0.5">MCP PROTOCOL</text>
+  <text x="555" y="418" text-anchor="middle" fill="#818cf8" font-size="9">stdio / SSE / HTTP</text>
+
+  <rect x="665" y="384" width="185" height="42" rx="6" fill="#312e81" stroke="#4338ca" stroke-width="1" filter="url(#shadow)"/>
+  <text x="757" y="405" text-anchor="middle" fill="#a5b4fc" font-size="10" font-weight="600" letter-spacing="0.5">A2A PROTOCOL</text>
+  <text x="757" y="418" text-anchor="middle" fill="#818cf8" font-size="9">Agent-to-Agent v0.3</text>
+
+  <!-- Arrow to LLM providers -->
+  <line x1="247" y1="426" x2="247" y2="448" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- ==================== LLM PROVIDERS ROW ==================== -->
+  <rect x="30" y="488" width="540" height="72" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <text x="50" y="509" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="1">LLM PROVIDERS</text>
+
+  <rect x="50" y="516" width="150" height="34" rx="6" fill="url(#infraGrad)" filter="url(#shadow)"/>
+  <text x="125" y="537" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Google Gemini</text>
+
+  <rect x="215" y="516" width="170" height="34" rx="6" fill="url(#infraGrad)" filter="url(#shadow)"/>
+  <text x="300" y="537" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Anthropic Claude</text>
+
+  <rect x="400" y="516" width="150" height="34" rx="6" fill="url(#infraGrad)" filter="url(#shadow)"/>
+  <text x="475" y="537" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">OpenAI GPT</text>
+
+  <!-- ==================== OBSERVABILITY ROW ==================== -->
+  <rect x="585" y="488" width="285" height="72" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <text x="605" y="509" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="1">OBSERVABILITY</text>
+
+  <rect x="605" y="516" width="75" height="34" rx="6" fill="url(#obsGrad)" filter="url(#shadow)"/>
+  <text x="642" y="537" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">Grafana</text>
+
+  <rect x="690" y="516" width="60" height="34" rx="6" fill="url(#obsGrad)" filter="url(#shadow)"/>
+  <text x="720" y="537" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">Tempo</text>
+
+  <rect x="760" y="516" width="95" height="34" rx="6" fill="url(#obsGrad)" filter="url(#shadow)"/>
+  <text x="807" y="537" text-anchor="middle" fill="#fff" font-size="10" font-weight="600">Prometheus</text>
+
+  <!-- ==================== YAML CONFIG ROW ==================== -->
+  <rect x="30" y="572" width="540" height="72" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <text x="50" y="593" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="1">YAML CONFIGURATION</text>
+
+  <rect x="50" y="600" width="120" height="34" rx="6" fill="#374151" stroke="#4b5563" stroke-width="1" filter="url(#shadow)"/>
+  <text x="110" y="615" text-anchor="middle" fill="#d1d5db" font-size="10" font-weight="600">agent.yaml</text>
+  <text x="110" y="627" text-anchor="middle" fill="#9ca3af" font-size="8">Agents + Prompts</text>
+
+  <rect x="185" y="600" width="120" height="34" rx="6" fill="#374151" stroke="#4b5563" stroke-width="1" filter="url(#shadow)"/>
+  <text x="245" y="615" text-anchor="middle" fill="#d1d5db" font-size="10" font-weight="600">*.root.yaml</text>
+  <text x="245" y="627" text-anchor="middle" fill="#9ca3af" font-size="8">Orchestrators</text>
+
+  <rect x="320" y="600" width="120" height="34" rx="6" fill="#374151" stroke="#4b5563" stroke-width="1" filter="url(#shadow)"/>
+  <text x="380" y="615" text-anchor="middle" fill="#d1d5db" font-size="10" font-weight="600">*.flow.yaml</text>
+  <text x="380" y="627" text-anchor="middle" fill="#9ca3af" font-size="8">State Machines</text>
+
+  <rect x="455" y="600" width="100" height="34" rx="6" fill="#374151" stroke="#4b5563" stroke-width="1" filter="url(#shadow)"/>
+  <text x="505" y="615" text-anchor="middle" fill="#d1d5db" font-size="10" font-weight="600">providers</text>
+  <text x="505" y="627" text-anchor="middle" fill="#9ca3af" font-size="8">LLM + Pricing</text>
+
+  <!-- Langfuse box -->
+  <rect x="585" y="572" width="285" height="72" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <text x="605" y="593" fill="#94a3b8" font-size="10" font-weight="600" letter-spacing="1">LLM ANALYTICS</text>
+
+  <rect x="605" y="600" width="245" height="34" rx="6" fill="url(#obsGrad)" filter="url(#shadow)"/>
+  <text x="727" y="617" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">Langfuse</text>
+  <text x="727" y="629" text-anchor="middle" fill="#fef3c7" font-size="9">Prompts / Tokens / Cost</text>
+
+  <!-- Connection arrows -->
+
+  <!-- ADK box bottom -> LLM Providers box top -->
+  <line x1="247" y1="426" x2="247" y2="484" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowGray)"/>
+
+  <!-- Tracing box bottom -> Observability box top -->
+  <line x1="727" y1="368" x2="727" y2="484" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7" marker-end="url(#arrowOrange)"/>
+  <text x="735" y="440" fill="#f59e0b" font-size="9" opacity="0.8">OTel</text>
+
+  <!-- Observability box bottom -> Langfuse box top -->
+  <line x1="727" y1="560" x2="727" y2="568" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.5"/>
+
+  <!-- Arrow markers -->
+  <defs>
+    <marker id="arrowGray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#64748b"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f59e0b"/>
+    </marker>
+  </defs>
+</svg>

@@ -2,6 +2,10 @@
 
 A modular, multi-agent AI platform built on [Google ADK](https://google.github.io/adk-docs/) (Agent Development Kit) and the [A2A](https://github.com/google/A2A) (Agent-to-Agent) protocol. Define agents declaratively in YAML, equip them with MCP tools, orchestrate complex workflows, and observe everything in real time.
 
+<p align="center">
+  <img src="docs/architecture.svg" alt="Architecture Overview" width="800"/>
+</p>
+
 ## Features
 
 ### Declarative Agents
