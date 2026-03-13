@@ -61,6 +61,7 @@ def _before_agent(callback_context: Any = None, *args: Any, **kwargs: Any) -> An
     """Start an agent span when the agent begins processing."""
     tracer = get_tracer()
     agent_name = getattr(callback_context, "agent_name", None) or "unknown"
+    logger.info("before_agent_callback fired for agent=%s", agent_name)
 
     span = tracer.start_span(
         f"agent:{agent_name}",
@@ -183,12 +184,12 @@ def _after_model(callback_context: Any = None, llm_response: Any = None, *args: 
 def _before_tool(*args: Any, **kwargs: Any) -> Any:
     """Start a tool span before tool invocation.
 
-    ADK tool callback signature: (tool, args_dict, tool_context)
+    ADK tool callback signature: (tool=..., args=..., tool_context=...)
     """
     tracer = get_tracer()
 
-    # Extract tool name and agent from positional args (ADK passes tool object first)
-    tool_obj = args[0] if args else None
+    # ADK passes kwargs, not positional args
+    tool_obj = args[0] if args else kwargs.get("tool")
     tool_context = args[2] if len(args) > 2 else kwargs.get("tool_context")
 
     name = ""
@@ -200,6 +201,7 @@ def _before_tool(*args: Any, **kwargs: Any) -> Any:
     agent_name = ""
     if tool_context:
         agent_name = getattr(tool_context, "agent_name", "") or ""
+    logger.info("before_tool_callback fired tool=%s agent=%s", name, agent_name)
 
     span = tracer.start_span(
         f"tool:{name or 'call'}",
@@ -219,7 +221,7 @@ def _before_tool(*args: Any, **kwargs: Any) -> Any:
 def _after_tool(*args: Any, **kwargs: Any) -> Any:
     """End the tool span with result metadata.
 
-    ADK tool callback signature: (tool, args_dict, tool_context, tool_response)
+    ADK tool callback signature: (tool=..., args=..., tool_context=..., tool_response=...)
     """
     span = _tool_span_var.get(None)
     token = _tool_span_token_var.get(None)

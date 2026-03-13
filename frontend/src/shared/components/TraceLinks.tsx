@@ -5,6 +5,7 @@ interface ObservabilityConfig {
   grafana_base_url: string;
   langfuse_enabled: boolean;
   langfuse_base_url: string;
+  langfuse_project_id: string;
 }
 
 let cachedConfig: ObservabilityConfig | null = null;
@@ -16,7 +17,7 @@ async function fetchConfig(): Promise<ObservabilityConfig> {
     cachedConfig = await res.json();
     return cachedConfig!;
   } catch {
-    return { tracing_enabled: false, grafana_base_url: '', langfuse_enabled: false, langfuse_base_url: '' };
+    return { tracing_enabled: false, grafana_base_url: '', langfuse_enabled: false, langfuse_base_url: '', langfuse_project_id: '' };
   }
 }
 
@@ -48,7 +49,9 @@ export function TraceLinks({ traceId, entityType, entityId }: TraceLinksProps) {
     : '';
 
   const langfuseUrl = config.langfuse_enabled && config.langfuse_base_url
-    ? `${config.langfuse_base_url}/trace/${traceId}`
+    ? config.langfuse_project_id
+      ? `${config.langfuse_base_url}/project/${config.langfuse_project_id}/traces/${traceId}`
+      : `${config.langfuse_base_url}/trace/${traceId}`
     : '';
 
   return (

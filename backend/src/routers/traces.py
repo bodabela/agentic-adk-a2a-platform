@@ -14,6 +14,7 @@ async def get_observability_config(request: Request):
         "grafana_base_url": settings.grafana_base_url,
         "langfuse_enabled": settings.langfuse_enabled,
         "langfuse_base_url": settings.langfuse_base_url,
+        "langfuse_project_id": settings.langfuse_project_id,
     }
 
 

@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = "http://langfuse:3000"
+    langfuse_project_id: str = ""
 
     # Dashboard URLs (for frontend deep-links)
     grafana_base_url: str = "http://localhost:3000"

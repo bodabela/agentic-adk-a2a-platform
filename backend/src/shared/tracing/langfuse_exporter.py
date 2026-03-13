@@ -1,13 +1,13 @@
-"""Custom OpenTelemetry SpanExporter that translates spans into Langfuse observations.
+"""OpenTelemetry SpanExporter that sends spans to Langfuse via its OTLP ingestion endpoint.
 
-This allows a single instrumentation layer (OTel callbacks) to feed both
-Grafana/Tempo AND Langfuse without duplicate callback wiring.
+Langfuse v3+ accepts OTLP/HTTP traces at /api/public/otel/v1/traces.
+Observation types (AGENT, TOOL, GENERATION) are set via the
+``langfuse.observation.type`` span attribute, which the Langfuse OTLP
+processor respects (unlike the REST ingestion API which only allows
+SPAN/GENERATION/EVENT).
 
-Span mapping:
-    - Root spans (task/flow)  → Langfuse Trace
-    - Agent spans             → Langfuse Span
-    - LLM spans               → Langfuse Generation (with prompt, completion, tokens, cost)
-    - Tool spans              → Langfuse Span with tool metadata
+The exporter enriches each OTel span with Langfuse-specific attributes
+before forwarding to the standard OTLP HTTP exporter.
 """
 
 from __future__ import annotations
@@ -20,157 +20,135 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
 logger = logging.getLogger("tracing.langfuse")
 
+# Langfuse OTel attribute keys (from langfuse._client.span.LangfuseOtelSpanAttributes)
+_ATTR_OBS_TYPE = "langfuse.observation.type"
+_ATTR_OBS_INPUT = "langfuse.observation.input"
+_ATTR_OBS_OUTPUT = "langfuse.observation.output"
+_ATTR_OBS_MODEL = "langfuse.observation.model.name"
+_ATTR_OBS_METADATA = "langfuse.observation.metadata"
+_ATTR_TRACE_NAME = "langfuse.trace.name"
+_ATTR_TRACE_INPUT = "langfuse.trace.input"
+
 
 class LangfuseSpanExporter(SpanExporter):
-    """Exports OTel spans to Langfuse."""
+    """Enriches OTel spans with Langfuse attributes and forwards via OTLP/HTTP."""
 
     def __init__(self, public_key: str, secret_key: str, host: str = "http://localhost:3000"):
-        self._client = None
-        self._public_key = public_key
-        self._secret_key = secret_key
-        self._host = host
-        self._init_client()
-
-    def _init_client(self) -> None:
+        self._otlp = None
         try:
-            from langfuse import Langfuse
-            self._client = Langfuse(
-                public_key=self._public_key,
-                secret_key=self._secret_key,
-                host=self._host,
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            endpoint = f"{host}/api/public/otel/v1/traces"
+            self._otlp = OTLPSpanExporter(
+                endpoint=endpoint,
+                headers={
+                    "Authorization": f"Basic {self._encode_auth(public_key, secret_key)}",
+                },
             )
-            logger.info("Langfuse client initialized: %s", self._host)
+            logger.info("Langfuse OTLP exporter configured: %s", endpoint)
         except ImportError:
-            logger.warning("langfuse package not installed — Langfuse export disabled")
+            logger.warning("opentelemetry-exporter-otlp-proto-http not installed")
         except Exception as exc:
-            logger.warning("Langfuse client init failed: %s", exc)
+            logger.warning("Langfuse OTLP exporter init failed: %s", exc)
+
+    @staticmethod
+    def _encode_auth(public_key: str, secret_key: str) -> str:
+        import base64
+        return base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        if not self._client:
+        if not self._otlp:
             return SpanExportResult.SUCCESS
 
+        enriched = []
         for span in spans:
-            try:
-                self._export_span(span)
-            except Exception as exc:
-                logger.debug("Langfuse export error for span %s: %s", span.name, exc)
+            enriched_span = self._enrich(span)
+            if enriched_span:
+                enriched.append(enriched_span)
 
+        if enriched:
+            return self._otlp.export(enriched)
         return SpanExportResult.SUCCESS
 
-    def _export_span(self, span: ReadableSpan) -> None:
+    def _enrich(self, span: ReadableSpan) -> ReadableSpan | None:
+        """Add langfuse.observation.type and other Langfuse attributes to the span."""
         attrs = dict(span.attributes or {})
         span_kind = attrs.get("span.kind", "")
-        trace_id = format(span.context.trace_id, "032x")
-        span_id = format(span.context.span_id, "016x")
+        name = span.name
 
-        # Determine parent span ID
-        parent_id = None
-        if span.parent and span.parent.span_id:
-            parent_id = format(span.parent.span_id, "016x")
-
-        # Convert timestamps (nanoseconds → datetime)
-        start_time = None
-        end_time = None
-        if span.start_time:
-            import datetime
-            start_time = datetime.datetime.fromtimestamp(
-                span.start_time / 1e9, tz=datetime.timezone.utc,
-            )
-        if span.end_time:
-            import datetime
-            end_time = datetime.datetime.fromtimestamp(
-                span.end_time / 1e9, tz=datetime.timezone.utc,
-            )
+        extra_attrs: dict[str, str] = {}
 
         if span_kind in ("task", "flow"):
-            # Root span → Langfuse Trace
-            self._client.trace(
-                id=trace_id,
-                name=span.name,
-                metadata={k: v for k, v in attrs.items() if k != "span.kind"},
-                input=attrs.get("task.description", attrs.get("flow.name", "")),
+            extra_attrs[_ATTR_TRACE_NAME] = name
+            extra_attrs[_ATTR_TRACE_INPUT] = attrs.get(
+                "task.description", attrs.get("flow.name", "")
             )
+            # Don't set observation type for trace root spans
 
         elif span_kind == "llm":
-            # LLM span → Langfuse Generation
-            self._client.generation(
-                trace_id=trace_id,
-                id=span_id,
-                parent_observation_id=parent_id,
-                name=span.name,
-                model=attrs.get("llm.model", ""),
-                input=attrs.get("llm.prompt", ""),
-                output=attrs.get("llm.completion", ""),
-                usage={
-                    "input": attrs.get("llm.input_tokens", 0),
-                    "output": attrs.get("llm.output_tokens", 0),
-                    "total": attrs.get("llm.total_tokens", 0),
-                },
-                metadata={
-                    "agent": attrs.get("llm.agent", ""),
-                    "latency_ms": attrs.get("llm.latency_ms", 0),
-                },
-                start_time=start_time,
-                end_time=end_time,
-            )
-
-        elif span_kind == "tool":
-            # Tool span → Langfuse Span
-            self._client.span(
-                trace_id=trace_id,
-                id=span_id,
-                parent_observation_id=parent_id,
-                name=span.name,
-                metadata={
-                    "tool.name": attrs.get("tool.name", ""),
-                    "tool.agent": attrs.get("tool.agent", ""),
-                    "tool.latency_ms": attrs.get("tool.latency_ms", 0),
-                    "tool.response_size": attrs.get("tool.response_size", 0),
-                },
-                input=attrs.get("tool.name", ""),
-                output=attrs.get("tool.response_preview", ""),
-                start_time=start_time,
-                end_time=end_time,
-            )
+            extra_attrs[_ATTR_OBS_TYPE] = "generation"
+            extra_attrs[_ATTR_OBS_MODEL] = attrs.get("llm.model", "")
+            if attrs.get("llm.prompt"):
+                extra_attrs[_ATTR_OBS_INPUT] = attrs["llm.prompt"]
+            if attrs.get("llm.completion"):
+                extra_attrs[_ATTR_OBS_OUTPUT] = attrs["llm.completion"]
 
         elif span_kind == "agent":
-            # Agent span → Langfuse Span
-            self._client.span(
-                trace_id=trace_id,
-                id=span_id,
-                parent_observation_id=parent_id,
-                name=span.name,
-                metadata={k: v for k, v in attrs.items() if k != "span.kind"},
-                start_time=start_time,
-                end_time=end_time,
-            )
+            extra_attrs[_ATTR_OBS_TYPE] = "agent"
 
-        elif span_kind == "state":
-            # Flow state span → Langfuse Span
-            self._client.span(
-                trace_id=trace_id,
-                id=span_id,
-                parent_observation_id=parent_id,
-                name=span.name,
-                metadata={
-                    "flow.state": attrs.get("flow.state", ""),
-                    "flow.node_type": attrs.get("flow.node_type", ""),
-                },
-                start_time=start_time,
-                end_time=end_time,
-            )
+        elif span_kind == "tool":
+            extra_attrs[_ATTR_OBS_TYPE] = "tool"
+            if attrs.get("tool.name"):
+                extra_attrs[_ATTR_OBS_INPUT] = attrs["tool.name"]
+            if attrs.get("tool.response_preview"):
+                extra_attrs[_ATTR_OBS_OUTPUT] = attrs["tool.response_preview"]
+
+        else:
+            # ADK internal spans — infer type from span name
+            if name.startswith("invoke_agent") or name.startswith("run_agent"):
+                extra_attrs[_ATTR_OBS_TYPE] = "agent"
+            elif name.startswith("execute_tool"):
+                extra_attrs[_ATTR_OBS_TYPE] = "tool"
+            elif name.startswith("generate_content") or name.startswith("call_llm"):
+                extra_attrs[_ATTR_OBS_TYPE] = "generation"
+            # else: remains a plain span
+
+        if not extra_attrs:
+            return span
+
+        # Merge extra attributes into the span
+        merged = {**attrs, **extra_attrs}
+        return _with_attributes(span, merged)
 
     def shutdown(self) -> None:
-        if self._client:
-            try:
-                self._client.flush()
-            except Exception:
-                pass
+        if self._otlp:
+            self._otlp.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        if self._client:
-            try:
-                self._client.flush()
-            except Exception:
-                pass
+        if self._otlp:
+            return self._otlp.force_flush(timeout_millis)
         return True
+
+
+def _with_attributes(span: ReadableSpan, new_attrs: dict) -> ReadableSpan:
+    """Return a shallow copy of span with replaced attributes.
+
+    ReadableSpan is immutable, so we create a new instance with the updated
+    attributes while preserving all other fields.
+    """
+    from opentelemetry.sdk.trace import ReadableSpan as RS
+
+    new_span = RS(
+        name=span.name,
+        context=span.context,
+        kind=span.kind,
+        parent=span.parent,
+        resource=span.resource,
+        attributes=new_attrs,
+        events=span.events,
+        links=span.links,
+        status=span.status,
+        start_time=span.start_time,
+        end_time=span.end_time,
+        instrumentation_info=span.instrumentation_info,
+    )
+    return new_span

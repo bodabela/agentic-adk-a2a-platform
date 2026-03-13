@@ -63,7 +63,7 @@ echo [3/3] Starting services with Docker Compose ...
 echo.
 
 pushd "%ROOT%"
-docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build -d
+docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build --force-recreate -d
 if errorlevel 1 (
     echo.
     echo   [FAIL] Docker Compose failed. Check the output above for errors.
@@ -107,7 +107,7 @@ echo   Swagger UI:   http://localhost:8000/docs
 echo   SSE Stream:   http://localhost:8000/api/events/stream
 echo.
 echo   Observability:
-echo     Grafana:      http://localhost:3000  (admin/admin)
+echo     Grafana:      http://localhost:3002  (admin/admin)
 echo     Prometheus:   http://localhost:9090
 echo     Langfuse:     http://localhost:3001
 echo     Tempo:        http://localhost:3200
