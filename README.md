@@ -1,221 +1,115 @@
 # Agentic ADK/A2A Platform
 
-A modular, multi-agent AI platform built on [Google ADK](https://google.github.io/adk-docs/) (Agent Development Kit). Agents are declaratively defined via YAML, equipped with MCP (Model Context Protocol) tools, and support multi-channel interaction (Web UI, Teams, WhatsApp).
+A modular, multi-agent AI platform built on [Google ADK](https://google.github.io/adk-docs/) (Agent Development Kit) and the [A2A](https://github.com/google/A2A) (Agent-to-Agent) protocol. Define agents declaratively in YAML, equip them with MCP tools, orchestrate complex workflows, and observe everything in real time.
 
-## Architecture
+## Features
 
-```
-Frontend (React + TypeScript)
-  │  SSE + REST
-  ▼
-Backend (FastAPI)
-  ├── Agent Factory ──── Instantiates ADK agents from YAML definitions
-  ├── Root Agent ─────── Orchestration (loop strategy, sub-agent coordination)
-  ├── Flow Engine ────── YAML-based state machine (branching, retry, human interaction)
-  ├── Interaction Broker  Multi-channel user interaction (WebUI / Teams / WhatsApp)
-  ├── Cost Tracker ───── Real-time LLM cost tracking
-  └── Event Bus ──────── Async pub/sub + SSE stream to frontend
-```
+### Declarative Agents
 
-**Two execution modes:**
-- **Task** — free-form user request, orchestrated by a root agent across sub-agents
-- **Flow** — structured YAML workflow with a state machine
+Agents are defined entirely in YAML — model, prompt, tools, capabilities — no Python code needed. The platform supports Google Gemini, Anthropic Claude, and OpenAI GPT with automatic model fallback. Agents connect to external tools via MCP (Model Context Protocol) with per-agent tool filtering.
+
+### Multi-Agent Orchestration
+
+Root agents coordinate multiple sub-agents using ADK's loop strategy. Agents are selected dynamically based on capabilities, and the orchestrator manages the conversation flow, delegation, and result synthesis across all sub-agents.
+
+### Flow Engine
+
+A YAML-based state machine for structured, multi-step processes. Flows support agent tasks, LLM-powered decisions, human interactions, parallel branches, conditional routing, event-driven transitions, and sub-flow invocation. Template variables propagate data across states. Retry loops and timeouts are built in.
+
+### Multi-Channel Interaction
+
+Agents can interact with humans through a unified Interaction Broker that supports Web UI, Microsoft Teams (Adaptive Cards via Azure Bot Framework), and WhatsApp (Twilio). Flows suspend at interaction points and resume when the user responds — on any channel.
+
+### Real-Time Cost Tracking
+
+Every LLM call, tool invocation, and agent delegation is tracked with per-model token pricing. Costs are streamed to the frontend in real time and aggregated per task and flow.
+
+### Observability
+
+Three-level monitoring built on OpenTelemetry: distributed traces in Grafana/Tempo (full span waterfall from task down to individual LLM calls), metrics in Prometheus (latency, throughput, cost trends), and LLM-specific analytics in Langfuse (prompt/completion tracking, token usage). A pre-built Grafana dashboard is included. Zero overhead when tracing is disabled.
+
+### Frontend
+
+A React-based web UI for managing the entire platform: submit tasks with real-time streaming responses, trigger and monitor flows, manage agent definitions, browse available tools, track costs with hierarchical drill-down, and view SVG diagrams of agent call graphs and flow state machines — with deep links to Grafana and Langfuse traces.
+
+### A2A Protocol
+
+Implements Google's Agent-to-Agent protocol for inter-agent communication with agent discovery, capability-based routing, session continuity, and SSE streaming.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.12+, FastAPI, Uvicorn |
-| AI/Agent | Google ADK, MCP protocol |
+| Backend | Python 3.12+, FastAPI, Uvicorn, Pydantic |
+| Agent Framework | Google ADK, MCP protocol |
 | LLM Providers | Google Gemini, Anthropic Claude, OpenAI GPT |
 | Frontend | React 19, TypeScript, Vite, Zustand |
+| Real-Time | Server-Sent Events (SSE) |
+| Observability | OpenTelemetry, Grafana, Tempo, Prometheus, Langfuse |
 | Infra | Docker, Docker Compose |
 
-## Project Structure
-
-```
-├── projects/                  # Project definitions (multi-project support)
-│   └── personal_assistant/    # Example project
-│       ├── agents/            #   Agent definitions (YAML + prompt markdown)
-│       ├── root_agents/       #   Root orchestrator definitions
-│       └── flows/             #   Flow definitions (YAML state machines)
-├── config/                    # Shared config
-│   └── llm_providers.yaml    #   LLM provider configuration and pricing
-├── backend/                   # FastAPI backend
-│   └── src/
-│       ├── config.py          #   App settings (project selection, paths)
-│       ├── routers/           #   REST API endpoints
-│       ├── shared/agents/     #   Factory, loader, schema, session manager
-│       ├── flow_engine/       #   State machine executor + DSL parser
-│       ├── interactions/      #   Broker + channel adapters (Web, Teams, WhatsApp)
-│       ├── cost/              #   Cost tracking
-│       └── events/            #   Event bus
-├── frontend/                  # React frontend
-├── docs/                      # Documentation
-├── workspace/                 # Shared workspace for MCP tools
-├── docker-compose.yaml        # Base Docker Compose
-├── docker-compose.override.yaml  # Dev overrides (hot reload, source mounts)
-├── docker-compose.prod.yaml   # Production overrides (static frontend)
-├── run.cmd                    # One-click production start (Windows)
-├── run-dev.cmd                # One-click dev start (Windows, hot reload)
-└── Makefile                   # Make targets for dev/test/docker
-```
-
-## Getting Started
-
-### Prerequisites
-
-- **Docker + Docker Compose** (recommended) — or:
-- Python 3.12+ and Node.js + pnpm (for local dev without Docker)
-- At least one API key (Google / Anthropic / OpenAI)
-
-### 1. Environment Variables
+## Quick Start
 
 ```bash
 cp .env.example .env
-# Edit .env and add your API keys
-```
+# Add your API key(s) to .env
 
-`.env.example` contents:
-
-```env
-GOOGLE_API_KEY=your-google-api-key
-ANTHROPIC_API_KEY=your-anthropic-api-key
-OPENAI_API_KEY=your-openai-api-key
-APP_DEBUG=true
-APP_PROJECT=personal_assistant
-```
-
-The `APP_PROJECT` variable selects which project directory to load from `projects/`.
-
-### 2a. Run with Docker (recommended)
-
-**Production mode** (static frontend build):
-
-```bash
-# Windows:
-run.cmd
-
-# Linux / macOS / Make:
-docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build -d
-```
-
-**Dev mode** (hot reload for backend + frontend):
-
-```bash
 # Windows:
 run-dev.cmd
 
-# Linux / macOS / Make:
+# Linux / macOS:
 make docker-up
-# or:
-docker compose up --build -d
 ```
 
-Dev mode mounts `backend/src/` and `frontend/src/` into the containers, so code changes trigger automatic restarts (uvicorn `--reload`) and HMR (Vite).
+Open http://localhost:5173 and submit a task.
 
-### 2b. Run locally (without Docker)
-
-```bash
-# Install dependencies
-make install
-# or:
-cd backend && pip install -e ".[dev]"
-cd frontend && pnpm install
-
-# Start backend (terminal 1)
-make dev-backend    # http://localhost:8000
-
-# Start frontend (terminal 2)
-make dev-frontend   # http://localhost:5173
-```
-
-### 3. Access
-
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| Swagger UI | http://localhost:8000/docs |
-| SSE Stream | http://localhost:8000/api/events/stream |
-
-## Multi-Project Support
-
-The platform supports multiple independent projects. Each project lives under `projects/<name>/` and contains its own agents, root agents, and flows.
-
-```
-projects/
-├── personal_assistant/    # Default project
-│   ├── agents/
-│   │   ├── calendar_agent/
-│   │   │   ├── agent.yaml
-│   │   │   ├── prompts/system_prompt.md
-│   │   │   └── tools/mcp_server.py
-│   │   ├── email_agent/
-│   │   └── ...
-│   ├── root_agents/
-│   │   └── personal_assistant.root.yaml
-│   └── flows/
-│       ├── meeting_prep.flow.yaml
-│       └── schedule_meeting.flow.yaml
-└── another_project/       # Add more projects here
-    ├── agents/
-    ├── root_agents/
-    └── flows/
-```
-
-**Switching projects:**
-
-```bash
-# Via .env:
-APP_PROJECT=another_project
-
-# Via environment variable:
-set APP_PROJECT=another_project   # Windows
-export APP_PROJECT=another_project  # Linux/macOS
-
-# Docker Compose picks it up automatically via ${APP_PROJECT:-personal_assistant}
-```
-
-## API Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /api/tasks` | Start a task |
-| `GET /api/tasks/{id}` | Get task status |
-| `POST /api/flows/start` | Start a flow |
-| `GET /api/flows/active` | List active flows |
-| `GET /api/events/stream` | SSE real-time events |
-| `GET /api/agents/` | List agent definitions |
-| `GET /api/agents/{name}` | Get agent detail (YAML + prompt + definition) |
-| `POST /api/agents/` | Create agent |
-| `PUT /api/agents/{name}` | Update agent |
-| `DELETE /api/agents/{name}` | Delete agent |
-| `GET /api/root-agents/` | List root agent definitions |
-| `GET /api/llm/providers` | Available LLM providers and models |
-| `GET /api/tools/` | List all MCP and builtin tools |
-| `GET /api/interactions/pending` | Pending human interactions |
-| `POST /api/interactions/respond` | Respond to an interaction |
-| `GET /health` | Health check |
-
-## Testing
-
-```bash
-make test           # Run tests
-make test-cov       # Coverage report
-make lint           # Code quality check (ruff + tsc)
-make lint-fix       # Auto-fix linting issues
-```
+See [Getting Started](docs/getting-started.md) for detailed setup instructions.
 
 ## Documentation
 
-Detailed docs (in Hungarian) are in the `docs/` directory:
-
 | Document | Description |
 |----------|-------------|
-| [Architecture](docs/architecture.md) | Full technical architecture |
+| [Getting Started](docs/getting-started.md) | Installation, configuration, and first run |
+| [Architecture](docs/architecture.md) | Technical architecture deep-dive |
 | [User Guide](docs/user-guide.md) | End-user guide for the web UI |
 | [MCP Setup](docs/mcp-setup.md) | MCP tool configuration reference |
 | [Channel Setup](docs/channel-setup.md) | Teams & WhatsApp integration |
 | [Cost Tracking](docs/cost-tracking.md) | LLM cost tracking internals |
 | [A2A Integration](docs/a2a-integration.md) | Google A2A protocol usage |
+
+## Roadmap
+
+The platform is built on Google ADK and A2A, positioning it for the emerging multi-agent ecosystem.
+
+### Agent Capabilities
+- **A2A Federation** — connect to external A2A-compatible agents as first-class sub-agents across organizations
+- **Agent Marketplace** — import/export agent definitions as portable packages
+- **Dynamic Agent Spawning** — root agents that create sub-agents at runtime based on task needs
+- **Agent Memory** — long-term memory via vector stores for cross-session context
+- **Multi-Modal Agents** — image, audio, and video processing within agent tasks
+
+### Flow Engine
+- **Visual Flow Builder** — drag-and-drop editor with live preview
+- **Flow Versioning** — version control with rollback
+- **Scheduled Flows** — cron-based triggers
+- **Flow Templates** — reusable parameterized patterns (approval chains, data pipelines)
+- **Conditional Retry Strategies** — exponential backoff, circuit breakers
+
+### Observability & Analytics
+- **Cost Budgets & Alerts** — per-task/per-agent cost limits with auto-stop
+- **Agent Performance Benchmarks** — success rates, latency percentiles, quality scores
+- **Prompt Analytics** — A/B testing via Langfuse experiments
+- **Custom Grafana Alerts** — anomaly detection for cost, latency, errors
+
+### Channels & Integration
+- **Slack** — native bot integration
+- **Email** — SMTP/IMAP for agent-driven email workflows
+- **Webhooks** — generic adapter for external systems
+- **Voice** — telephony integration
+
+### Platform
+- **Multi-Tenant Deployment** — authentication, access control, API key management
+- **Agent Evaluation Framework** — automated testing with golden datasets and LLM-as-judge
+- **Plugin System** — custom node types, exporters, and channel adapters
+- **Kubernetes Deployment** — Helm charts with autoscaling
+- **CLI Tool** — command-line agent/flow management
