@@ -62,9 +62,17 @@ async def lifespan(app: FastAPI):
 
     # Declarative agent infrastructure
     from pathlib import Path
+    from src.shared.agents.venv_manager import VenvManager
     agents_dir = Path(settings.agents_dir).resolve()
     workspace_dir = Path(settings.workspace_dir).resolve()
     root_agents_dir = Path(settings.root_agents_dir).resolve()
+
+    # Per-project / per-agent dependency isolation
+    project_dir = agents_dir.parent  # e.g. projects/personal_assistant
+    venvs_root = Path(__file__).resolve().parent.parent / ".venvs"
+    venv_manager = VenvManager(venvs_root=venvs_root, project_dir=project_dir)
+    await asyncio.to_thread(venv_manager.setup_all, agents_dir)
+    app.state.venv_manager = venv_manager
 
     agent_factory = AgentFactory(
         agents_dir=agents_dir,
@@ -72,6 +80,7 @@ async def lifespan(app: FastAPI):
         event_bus=app.state.event_bus,
         llm_config=app.state.llm_config,
         tracing_enabled=settings.tracing_enabled,
+        venv_manager=venv_manager,
     )
     agent_factory.load_definitions()
     app.state.agent_factory = agent_factory

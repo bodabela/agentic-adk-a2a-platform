@@ -1,0 +1,7 @@
+# Agent-specific dependencies for research_agent
+# These are installed into an isolated venv used by this agent's MCP tool server.
+#
+# Example: if this agent needs real web scraping / search capabilities:
+# httpx>=0.28.0
+# beautifulsoup4>=4.12.0
+# trafilatura>=1.12.0

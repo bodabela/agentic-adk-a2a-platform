@@ -35,12 +35,14 @@ class AgentFactory:
         event_bus: Any | None = None,
         llm_config: Any | None = None,
         tracing_enabled: bool = False,
+        venv_manager: Any | None = None,
     ):
         self._agents_dir = agents_dir
         self._workspace_dir = workspace_dir
         self._event_bus = event_bus
         self._llm_config = llm_config
         self._tracing_enabled = tracing_enabled
+        self._venv_manager = venv_manager
         self._agent_defs: dict[str, AgentDefinition] = {}
 
     # -- lifecycle ----------------------------------------------------------
@@ -225,10 +227,17 @@ class AgentFactory:
         if mcp_conf.workspace:
             workspace = self._resolve_templates(mcp_conf.workspace, ws_dir)
 
+        # Use agent-specific venv Python when available (per-agent/project deps)
+        python_exec = sys.executable
+        if self._venv_manager:
+            python_exec = self._venv_manager.get_python(agent_name)
+            if python_exec != sys.executable:
+                logger.info("mcp_using_venv", agent=agent_name, python=python_exec)
+
         return McpToolset(
             connection_params=StdioConnectionParams(
                 server_params=StdioServerParameters(
-                    command=sys.executable,
+                    command=python_exec,
                     args=[str(server_path), "--workspace", workspace],
                 ),
                 timeout=30,
