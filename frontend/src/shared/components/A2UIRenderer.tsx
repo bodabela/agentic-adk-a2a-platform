@@ -325,6 +325,80 @@ function RenderComponent({
         }} />
       );
 
+    case 'Checkbox': {
+      const label = resolveValue(props.label, data, itemData);
+      const binding = String(props.dataBinding || '').replace(/^\//, '');
+      const checked = formState[binding] === 'true';
+      return (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => onFormChange(binding, checked ? 'false' : 'true')}
+            style={{ accentColor: v(PRIMARY, styles.primaryColor), width: '1.1em', height: '1.1em' }}
+          />
+          {label && <span>{label}</span>}
+        </label>
+      );
+    }
+
+    case 'RadioButton': {
+      const label = resolveValue(props.label, data, itemData);
+      const binding = String(props.dataBinding || '').replace(/^\//, '');
+      const value = resolveValue(props.value, data, itemData);
+      const checked = formState[binding] === value;
+      return (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+          <input
+            type="radio"
+            name={binding}
+            checked={checked}
+            onChange={() => onFormChange(binding, value)}
+            style={{ accentColor: v(PRIMARY, styles.primaryColor), width: '1.1em', height: '1.1em' }}
+          />
+          {label && <span>{label}</span>}
+        </label>
+      );
+    }
+
+    case 'Dropdown': {
+      const label = resolveValue(props.label, data, itemData);
+      const binding = String(props.dataBinding || '').replace(/^\//, '');
+      const optionsBinding = String(props.optionsBinding || '').replace(/^\//, '');
+      const items = optionsBinding && data[optionsBinding] && typeof data[optionsBinding] === 'object'
+        ? Object.values(data[optionsBinding] as Record<string, Record<string, unknown>>)
+        : [];
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          {label && (
+            <label style={{ color: v(MUTED, 'color-mix(in srgb, currentColor 60%, transparent)'), fontSize: '0.85em' }}>
+              {label}
+            </label>
+          )}
+          <select
+            value={formState[binding] ?? ''}
+            onChange={(e) => onFormChange(binding, e.target.value)}
+            style={{
+              padding: '0.5rem 0.75rem',
+              background: v(INPUT_BG, 'transparent'),
+              border: `1px solid ${v(INPUT_BORDER, 'color-mix(in srgb, currentColor 25%, transparent)')}`,
+              borderRadius: radius,
+              color: 'inherit',
+              fontSize: 'inherit',
+              fontFamily: 'inherit',
+            }}
+          >
+            <option value="">—</option>
+            {items.map((item, idx) => {
+              const val = String(item.value ?? item.label ?? '');
+              const lbl = String(item.label ?? item.value ?? '');
+              return <option key={idx} value={val}>{lbl}</option>;
+            })}
+          </select>
+        </div>
+      );
+    }
+
     case 'List': {
       const children = props.children as Record<string, unknown>;
       if (!children) return null;

@@ -98,6 +98,9 @@ You can use ANY of these components when building or customizing A2UI JSON:
 | `TextField` | Free text input | `label`, `placeholder`, `dataBinding: "/key"` |
 | `NumberField` | Numeric input | `label`, `dataBinding: "/key"` |
 | `DateTimePicker` | Date/time selector | `label`, `dataBinding: "/key"` |
+| `Checkbox` | Toggle on/off | `label`, `dataBinding: "/key"` (stores "true"/"false") |
+| `RadioButton` | Pick one from group | `label`, `value: {"literalString":"..."}`, `dataBinding: "/key"` (all radios in group share same dataBinding) |
+| `Dropdown` | Select from list | `label`, `dataBinding: "/key"`, `optionsBinding: "/optionsKey"` (options = map of `{label, value}` entries) |
 
 ### Action
 | Component | Purpose | Key props |
@@ -117,8 +120,11 @@ You can use ANY of these components when building or customizing A2UI JSON:
 |-----------|-------|-------|
 | Date | `TextField` with "YYYY-MM-DD" placeholder | `DateTimePicker` |
 | Number/quantity | `TextField` | `NumberField` |
-| Yes/No | `TextField` | Two `Button` components |
-| Pick from list | `TextField` | `List` with `Button` template or multiple `Button`s |
+| Yes/No | `TextField` | Two `Button` components or `Checkbox` |
+| Toggle/flag | `Button` | `Checkbox` |
+| Pick one from 2-6 options | `TextField` | `Button`s or `RadioButton` group |
+| Pick one from 7+ options | Multiple `Button`s | `Dropdown` |
+| Pick from list with details | `Dropdown` | `List` with `Button` template or `option_list` |
 
 ---
 
