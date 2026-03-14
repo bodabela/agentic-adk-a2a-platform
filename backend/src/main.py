@@ -248,6 +248,9 @@ if settings.tracing_enabled:
 if settings.tracing_enabled:
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-        FastAPIInstrumentor.instrument_app(app)
+        FastAPIInstrumentor.instrument_app(
+            app,
+            excluded_urls="health,metrics,/api/agents,/api/flows,/api/sessions,/api/interactions/channels,/api/root-agents/definitions,/api/llm/providers,/api/traces/config",
+        )
     except Exception as _exc:
         _log.warning("FastAPI OTel instrumentation failed: %s", _exc)

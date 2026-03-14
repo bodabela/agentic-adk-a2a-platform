@@ -17,7 +17,7 @@ echo ============================================
 echo.
 
 :: ---- Docker check ----
-echo [1/3] Checking Docker ...
+echo [1/4] Checking Docker ...
 where docker >nul 2>&1
 if errorlevel 1 (
     echo   [FAIL] Docker not found. Install Docker Desktop from https://www.docker.com/products/docker-desktop
@@ -43,7 +43,7 @@ if not exist "%ROOT%\projects\%APP_PROJECT%" (
 echo   [OK]   Project "%APP_PROJECT%" found
 
 :: ---- .env check ----
-echo [2/3] Checking .env ...
+echo [2/4] Checking .env ...
 if not exist "%ROOT%\.env" (
     if exist "%ROOT%\.env.example" (
         copy "%ROOT%\.env.example" "%ROOT%\.env" >nul
@@ -58,8 +58,18 @@ if not exist "%ROOT%\.env" (
     echo   [OK]   .env found
 )
 
+:: ---- Clean Langfuse trace data (keep Postgres for org/project/keys) ----
+echo [3/4] Cleaning Langfuse traces ...
+pushd "%ROOT%"
+docker compose -f docker-compose.yaml -f docker-compose.prod.yaml rm -sfv langfuse langfuse-worker langfuse-clickhouse langfuse-redis langfuse-minio >nul 2>&1
+for %%V in (langfuse-clickhouse-data langfuse-clickhouse-logs langfuse-redis-data langfuse-minio-data) do (
+    docker volume rm "agentic-adk-a2a-platform_%%V" >nul 2>&1
+)
+echo   [OK]   Langfuse traces cleaned (org/keys preserved)
+popd
+
 :: ---- Build & Start ----
-echo [3/3] Starting services with Docker Compose ...
+echo [4/4] Starting services with Docker Compose ...
 echo.
 
 pushd "%ROOT%"
