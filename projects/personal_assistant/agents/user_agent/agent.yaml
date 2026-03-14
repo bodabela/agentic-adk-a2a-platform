@@ -1,7 +1,7 @@
 agent:
   name: "user_agent"
-  version: "0.1.0"
-  description: "Handles direct human interaction - asks the user for clarification, preferences, or decisions"
+  version: "0.2.0"
+  description: "Handles direct human interaction with rich graphical UI - asks the user for clarification, preferences, or decisions using A2UI declarative components"
   category: "interaction"
   model: "gemini-2.5-flash"
   instruction: "prompts/system_prompt.md"
@@ -10,9 +10,12 @@ agent:
     - "user_interaction"
     - "clarification"
     - "confirmation"
+    - "a2ui_rich_ui"
   generate_content_config:
     thinking: false
   tools:
-    mcp: []
+    mcp:
+      - transport: "stdio"
+        server: "tools/mcp_server.py"
     builtin:
       - "ask_user"

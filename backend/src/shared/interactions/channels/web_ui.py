@@ -45,6 +45,8 @@ class WebUIChannel(ChannelAdapter):
         }
         if interaction.questions:
             payload["questions"] = interaction.questions
+        if interaction.a2ui_payload:
+            payload["a2ui_payload"] = interaction.a2ui_payload
 
         await self._event_bus.emit(event_name, payload)
         logger.info(

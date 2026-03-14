@@ -156,10 +156,10 @@ class VenvManager:
         """Create venv and install deps using uv (fast path)."""
         venv_dir = self._venv_dir(name)
 
-        # uv venv <path> --python <version>
+        # uv venv <path> --python <version> --clear (replace if exists)
         logger.info("uv_venv_create", name=name, path=str(venv_dir))
         result = subprocess.run(
-            ["uv", "venv", str(venv_dir), "--python", f"{sys.version_info.major}.{sys.version_info.minor}"],
+            ["uv", "venv", str(venv_dir), "--python", f"{sys.version_info.major}.{sys.version_info.minor}", "--clear"],
             capture_output=True, text=True, timeout=120,
         )
         if result.returncode != 0:

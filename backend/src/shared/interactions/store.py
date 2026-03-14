@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS interactions (
     prompt         TEXT NOT NULL DEFAULT '',
     options        TEXT,
     questions      TEXT,
+    a2ui_payload   TEXT,
     metadata       TEXT DEFAULT '{}',
     status         TEXT NOT NULL DEFAULT 'pending',
     response       TEXT,
@@ -37,6 +38,10 @@ CREATE INDEX IF NOT EXISTS idx_interactions_context ON interactions(context_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_channel ON interactions(channel);
 """
 
+_MIGRATIONS = [
+    "ALTER TABLE interactions ADD COLUMN a2ui_payload TEXT",
+]
+
 
 class InteractionStore:
     """Thread-safe SQLite store for interaction records."""
@@ -47,7 +52,17 @@ class InteractionStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA)
+        self._apply_migrations()
         logger.info("store_initialized", db_path=self._db_path)
+
+    def _apply_migrations(self) -> None:
+        """Apply schema migrations for existing databases."""
+        for sql in _MIGRATIONS:
+            try:
+                self._conn.execute(sql)
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
     def save(self, interaction: Interaction) -> None:
         """Insert or update an interaction record."""
@@ -55,9 +70,9 @@ class InteractionStore:
             """
             INSERT OR REPLACE INTO interactions
                 (interaction_id, context_id, context_type, channel,
-                 interaction_type, prompt, options, questions, metadata,
-                 status, response, responder, created_at, answered_at, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 interaction_type, prompt, options, questions, a2ui_payload,
+                 metadata, status, response, responder, created_at, answered_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 interaction.interaction_id,
@@ -68,6 +83,7 @@ class InteractionStore:
                 interaction.prompt,
                 json.dumps(interaction.options) if interaction.options else None,
                 json.dumps(interaction.questions) if interaction.questions else None,
+                json.dumps(interaction.a2ui_payload) if interaction.a2ui_payload else None,
                 json.dumps(interaction.metadata),
                 interaction.status.value,
                 json.dumps(interaction.response) if interaction.response is not None else None,
@@ -160,6 +176,8 @@ class InteractionStore:
             d["options"] = json.loads(d["options"])
         if d.get("questions"):
             d["questions"] = json.loads(d["questions"])
+        if d.get("a2ui_payload"):
+            d["a2ui_payload"] = json.loads(d["a2ui_payload"])
         if d.get("metadata"):
             d["metadata"] = json.loads(d["metadata"])
         if d.get("response"):

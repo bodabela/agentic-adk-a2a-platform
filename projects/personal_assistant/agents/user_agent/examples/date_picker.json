@@ -1,0 +1,107 @@
+[
+  {
+    "beginRendering": {
+      "surfaceId": "date-picker",
+      "root": "root-column",
+      "styles": {"primaryColor": "#1976D2", "font": "Roboto"}
+    }
+  },
+  {
+    "surfaceUpdate": {
+      "surfaceId": "date-picker",
+      "components": [
+        {
+          "id": "root-column",
+          "component": {
+            "Column": {
+              "children": {"explicitList": ["title", "description", "date-field", "divider", "other-section", "submit-btn"]}
+            }
+          }
+        },
+        {
+          "id": "title",
+          "component": {
+            "Text": {"usageHint": "h2", "text": {"path": "/title"}}
+          }
+        },
+        {
+          "id": "description",
+          "component": {
+            "Text": {"text": {"path": "/description"}}
+          }
+        },
+        {
+          "id": "date-field",
+          "component": {
+            "DateTimePicker": {
+              "label": {"path": "/dateLabel"},
+              "dataBinding": "/selectedDate"
+            }
+          }
+        },
+        {
+          "id": "divider",
+          "component": {"Divider": {}}
+        },
+        {
+          "id": "other-section",
+          "component": {
+            "Column": {
+              "children": {"explicitList": ["other-label", "other-input"]}
+            }
+          }
+        },
+        {
+          "id": "other-label",
+          "component": {
+            "Text": {"usageHint": "h5", "text": {"path": "/otherLabel"}}
+          }
+        },
+        {
+          "id": "other-input",
+          "component": {
+            "TextField": {
+              "placeholder": {"path": "/otherPlaceholder"},
+              "dataBinding": "/otherText"
+            }
+          }
+        },
+        {
+          "id": "submit-btn",
+          "component": {
+            "Button": {
+              "child": "submit-text",
+              "primary": true,
+              "action": {
+                "name": "submit_date",
+                "context": [
+                  {"key": "selectedDate", "value": {"path": "/selectedDate"}},
+                  {"key": "otherText", "value": {"path": "/otherText"}}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "submit-text",
+          "component": {"Text": {"text": {"literalString": "Submit"}}}
+        }
+      ]
+    }
+  },
+  {
+    "dataModelUpdate": {
+      "surfaceId": "date-picker",
+      "path": "/",
+      "contents": [
+        {"key": "title", "valueString": "Select a date"},
+        {"key": "description", "valueString": "Please pick a date from the calendar."},
+        {"key": "dateLabel", "valueString": "Date"},
+        {"key": "selectedDate", "valueString": ""},
+        {"key": "otherLabel", "valueString": "Or tell me your preference:"},
+        {"key": "otherPlaceholder", "valueString": "E.g. 'next Tuesday', 'sometime next week'..."},
+        {"key": "otherText", "valueString": ""}
+      ]
+    }
+  }
+]

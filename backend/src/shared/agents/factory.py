@@ -21,6 +21,72 @@ from src.shared.logging import get_logger
 logger = get_logger("agents.factory")
 
 
+def _extract_a2ui(text: str) -> list[dict] | None:
+    """Extract A2UI JSON payload from text containing <a2ui>...</a2ui> tags.
+
+    LLMs produce JSON with varying levels of escaping depending on how many
+    serialization layers the text passes through. This function handles it
+    by iteratively unescaping until valid JSON is found (up to 5 rounds).
+
+    Returns the parsed JSON list if found and valid, otherwise None.
+    """
+    import re
+    match = re.search(r"<a2ui>(.*?)</a2ui>", text, re.DOTALL)
+    if not match:
+        return None
+
+    raw = match.group(1).strip()
+
+    def _try_parse(s: str) -> list[dict] | None:
+        s = s.strip()
+        if not s:
+            return None
+        try:
+            payload = json.loads(s)
+            if isinstance(payload, list):
+                return payload
+        except (json.JSONDecodeError, TypeError):
+            pass
+        # Try extracting just the JSON array (LLM may add text around it)
+        m = re.search(r"(\[.*\])", s, re.DOTALL)
+        if m:
+            try:
+                payload = json.loads(m.group(1))
+                if isinstance(payload, list):
+                    return payload
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return None
+
+    def _unescape_round(s: str) -> str:
+        """One round of unescaping — handles one level of string escaping."""
+        s = s.replace("\\\\", "\x00BACKSLASH\x00")  # protect real escaped backslashes
+        s = s.replace("\\n", "\n")       # \n → newline
+        s = s.replace("\\t", "\t")       # \t → tab
+        s = s.replace('\\"', '"')        # \" → "
+        s = s.replace("\\'", "'")        # \' → '
+        s = re.sub(r"\\\n", "\n", s)     # trailing \ before newline (line continuation)
+        s = s.replace("\x00BACKSLASH\x00", "\\")  # restore single backslashes
+        s = re.sub(r",\s*([}\]])", r"\1", s)  # trailing commas
+        return s
+
+    # Try as-is first
+    result = _try_parse(raw)
+    if result:
+        return result
+
+    # Iteratively unescape up to 5 rounds (each round handles one escaping layer)
+    candidate = raw
+    for _ in range(5):
+        candidate = _unescape_round(candidate)
+        result = _try_parse(candidate)
+        if result:
+            return result
+
+    logger.warning("a2ui_extract_failed", raw_length=len(raw), raw_preview=raw[:200])
+    return None
+
+
 class AgentFactory:
     """Creates ADK Agent instances from declarative YAML definitions.
 
@@ -438,8 +504,11 @@ class AgentFactory:
             The question is delivered through the configured communication channel
             (browser, Teams, WhatsApp, etc.).
 
+            The question may contain A2UI rich UI markup wrapped in <a2ui>...</a2ui> tags.
+            When present, the frontend renders an interactive graphical UI instead of plain text.
+
             Args:
-                question: The question to ask the user.
+                question: The question to ask the user. May contain <a2ui> tagged JSON for rich UI.
                 question_type: One of "free_text", "choice", or "confirmation".
                 options: For "choice" type, the list of options to present.
 
@@ -450,12 +519,26 @@ class AgentFactory:
             if question_type == "choice" and options:
                 options_payload = [{"id": opt, "label": opt} for opt in options]
 
+            # Extract A2UI payload from question if present
+            a2ui_payload = None
+            clean_prompt = question
+            a2ui_json = _extract_a2ui(question)
+            if a2ui_json is not None:
+                a2ui_payload = a2ui_json
+                # Strip the <a2ui>...</a2ui> block from the prompt, keep fallback text
+                import re
+                clean_prompt = re.sub(r"<a2ui>.*?</a2ui>", "", question, flags=re.DOTALL).strip()
+                if not clean_prompt:
+                    clean_prompt = "Please interact with the form above."
+                question_type = "a2ui"
+
             interaction_id = await _broker.create_interaction(
                 context_id=_context_id,
                 context_type=_context_type,
                 interaction_type=question_type,
-                prompt=question,
+                prompt=clean_prompt,
                 options=options_payload,
+                a2ui_payload=a2ui_payload,
                 channel=_channel,
                 metadata={"agent": "ask_user"},
             )
@@ -465,6 +548,7 @@ class AgentFactory:
                 context_id=_context_id,
                 interaction_id=interaction_id,
                 channel=_channel,
+                has_a2ui=a2ui_payload is not None,
             )
 
             # Wait with suspension support for external channels

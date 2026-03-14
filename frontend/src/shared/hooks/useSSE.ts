@@ -87,6 +87,7 @@ export function useSSE() {
         prompt: data.prompt,
         options: data.options,
         channel: data.channel,
+        a2ui_payload: data.a2ui_payload,
       });
     });
 

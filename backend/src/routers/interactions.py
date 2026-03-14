@@ -106,6 +106,7 @@ async def list_pending_interactions(
                 "interaction_type": i.interaction_type.value,
                 "prompt": i.prompt,
                 "options": i.options,
+                "a2ui_payload": i.a2ui_payload,
                 "status": i.status.value,
                 "created_at": i.created_at.isoformat(),
                 "expires_at": i.expires_at.isoformat() if i.expires_at else None,

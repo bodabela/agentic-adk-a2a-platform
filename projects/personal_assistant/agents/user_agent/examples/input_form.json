@@ -1,0 +1,103 @@
+[
+  {
+    "beginRendering": {
+      "surfaceId": "form",
+      "root": "form-card",
+      "styles": {"primaryColor": "#1976D2", "font": "Roboto"}
+    }
+  },
+  {
+    "surfaceUpdate": {
+      "surfaceId": "form",
+      "components": [
+        {
+          "id": "form-card",
+          "component": {"Card": {"child": "form-column"}}
+        },
+        {
+          "id": "form-column",
+          "component": {
+            "Column": {
+              "children": {"explicitList": [
+                "form-title", "form-description",
+                "field-input", "divider",
+                "other-notes", "submit-btn"
+              ]}
+            }
+          }
+        },
+        {
+          "id": "form-title",
+          "component": {
+            "Text": {"usageHint": "h2", "text": {"path": "/title"}}
+          }
+        },
+        {
+          "id": "form-description",
+          "component": {
+            "Text": {"text": {"path": "/description"}}
+          }
+        },
+        {
+          "id": "field-input",
+          "component": {
+            "TextField": {
+              "label": {"path": "/fieldLabel"},
+              "placeholder": {"path": "/fieldPlaceholder"},
+              "dataBinding": "/userInput"
+            }
+          }
+        },
+        {
+          "id": "divider",
+          "component": {"Divider": {}}
+        },
+        {
+          "id": "other-notes",
+          "component": {
+            "TextField": {
+              "label": {"path": "/otherLabel"},
+              "placeholder": {"path": "/otherPlaceholder"},
+              "dataBinding": "/otherNotes"
+            }
+          }
+        },
+        {
+          "id": "submit-btn",
+          "component": {
+            "Button": {
+              "child": "submit-text", "primary": true,
+              "action": {
+                "name": "submit_form",
+                "context": [
+                  {"key": "input", "value": {"path": "/userInput"}},
+                  {"key": "otherNotes", "value": {"path": "/otherNotes"}}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "submit-text",
+          "component": {"Text": {"text": {"literalString": "Submit"}}}
+        }
+      ]
+    }
+  },
+  {
+    "dataModelUpdate": {
+      "surfaceId": "form",
+      "path": "/",
+      "contents": [
+        {"key": "title", "valueString": "Please provide details"},
+        {"key": "description", "valueString": "Fill in the information below."},
+        {"key": "fieldLabel", "valueString": "Your response"},
+        {"key": "fieldPlaceholder", "valueString": "Type here..."},
+        {"key": "userInput", "valueString": ""},
+        {"key": "otherLabel", "valueString": "Other instructions or preferences"},
+        {"key": "otherPlaceholder", "valueString": "Anything else you'd like me to know..."},
+        {"key": "otherNotes", "valueString": ""}
+      ]
+    }
+  }
+]

@@ -23,6 +23,7 @@ class InteractionType(str, Enum):
     confirmation = "confirmation"
     form = "form"
     multi_question = "multi_question"
+    a2ui = "a2ui"  # Rich UI via A2UI declarative JSON
 
 
 class Interaction(BaseModel):
@@ -36,6 +37,7 @@ class Interaction(BaseModel):
     prompt: str = ""
     options: list[dict[str, str]] | None = None  # for choice type
     questions: list[dict[str, Any]] | None = None  # for form type
+    a2ui_payload: list[dict[str, Any]] | None = None  # A2UI declarative UI JSON
     metadata: dict[str, Any] = Field(default_factory=dict)
     status: InteractionStatus = InteractionStatus.pending
     response: Any = None

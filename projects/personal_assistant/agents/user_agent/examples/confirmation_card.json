@@ -1,0 +1,142 @@
+[
+  {
+    "beginRendering": {
+      "surfaceId": "confirmation",
+      "root": "confirm-card",
+      "styles": {"primaryColor": "#388E3C", "font": "Roboto"}
+    }
+  },
+  {
+    "surfaceUpdate": {
+      "surfaceId": "confirmation",
+      "components": [
+        {
+          "id": "confirm-card",
+          "component": {"Card": {"child": "confirm-column"}}
+        },
+        {
+          "id": "confirm-column",
+          "component": {
+            "Column": {
+              "children": {"explicitList": [
+                "confirm-title", "confirm-message",
+                "confirm-divider", "confirm-buttons",
+                "alt-divider", "alt-section"
+              ]}
+            }
+          }
+        },
+        {
+          "id": "confirm-title",
+          "component": {
+            "Text": {"usageHint": "h2", "text": {"path": "/title"}}
+          }
+        },
+        {
+          "id": "confirm-message",
+          "component": {
+            "Text": {"text": {"path": "/message"}}
+          }
+        },
+        {
+          "id": "confirm-divider",
+          "component": {"Divider": {}}
+        },
+        {
+          "id": "confirm-buttons",
+          "component": {
+            "Row": {
+              "children": {"explicitList": ["btn-yes", "btn-no"]}
+            }
+          }
+        },
+        {
+          "id": "btn-yes",
+          "component": {
+            "Button": {
+              "child": "yes-text", "primary": true,
+              "action": {"name": "confirm", "context": [
+                {"key": "confirmed", "value": {"literalString": "yes"}}
+              ]}
+            }
+          }
+        },
+        {
+          "id": "yes-text",
+          "component": {"Text": {"text": {"path": "/yesLabel"}}}
+        },
+        {
+          "id": "btn-no",
+          "component": {
+            "Button": {
+              "child": "no-text", "primary": false,
+              "action": {"name": "confirm", "context": [
+                {"key": "confirmed", "value": {"literalString": "no"}}
+              ]}
+            }
+          }
+        },
+        {
+          "id": "no-text",
+          "component": {"Text": {"text": {"path": "/noLabel"}}}
+        },
+        {
+          "id": "alt-divider",
+          "component": {"Divider": {}}
+        },
+        {
+          "id": "alt-section",
+          "component": {
+            "Row": {
+              "children": {"explicitList": ["alt-input", "alt-submit"]}
+            }
+          }
+        },
+        {
+          "id": "alt-input",
+          "weight": 3,
+          "component": {
+            "TextField": {
+              "placeholder": {"path": "/altPlaceholder"},
+              "dataBinding": "/altText"
+            }
+          }
+        },
+        {
+          "id": "alt-submit",
+          "weight": 1,
+          "component": {
+            "Button": {
+              "child": "alt-submit-text", "primary": false,
+              "action": {
+                "name": "submit_other",
+                "context": [
+                  {"key": "confirmed", "value": {"literalString": "other"}},
+                  {"key": "altText", "value": {"path": "/altText"}}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "alt-submit-text",
+          "component": {"Text": {"text": {"literalString": "Send"}}}
+        }
+      ]
+    }
+  },
+  {
+    "dataModelUpdate": {
+      "surfaceId": "confirmation",
+      "path": "/",
+      "contents": [
+        {"key": "title", "valueString": "Confirm Action"},
+        {"key": "message", "valueString": "Are you sure you want to proceed with this action?"},
+        {"key": "yesLabel", "valueString": "Yes, proceed"},
+        {"key": "noLabel", "valueString": "No, cancel"},
+        {"key": "altPlaceholder", "valueString": "Or tell me what you'd like instead..."},
+        {"key": "altText", "valueString": ""}
+      ]
+    }
+  }
+]

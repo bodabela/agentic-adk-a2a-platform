@@ -1,0 +1,5 @@
+# Agent-specific dependencies for user_agent
+# These are installed into an isolated venv used by this agent's MCP tool server.
+mcp>=1.8.0
+a2ui-agent>=0.0.0
+jsonschema>=4.0.0

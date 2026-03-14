@@ -31,6 +31,7 @@ export interface TaskPendingInteraction {
   prompt: string;
   options?: InteractionOption[];
   channel?: string;
+  a2ui_payload?: Record<string, unknown>[];
 }
 
 interface TaskStore {
