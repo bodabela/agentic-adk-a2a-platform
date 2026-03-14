@@ -71,6 +71,7 @@ class FlowParser:
             trigger=FlowTrigger(**flow_data.get("trigger", {})),
             config=FlowConfig(**flow_data.get("config", {})),
             states=flow_data.get("states", {}),
+            expose=flow_data.get("expose", False),
         )
 
         nodes: dict[str, FlowNode] = {}

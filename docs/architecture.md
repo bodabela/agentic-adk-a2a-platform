@@ -23,6 +23,8 @@ Ez a dokumentum a platform teljes technikai architektúráját ismerteti: a dekl
 │  │                     API Layer                                  │      │
 │  │  /api/tasks  /api/flows  /api/agents  /api/root-agents        │      │
 │  │  /api/interactions  /api/events/stream  /api/llm              │      │
+│  │  /a2a/catalog  /.well-known/agents.json                        │      │
+│  │  /a2a/{agents,root-agents,flows}/{name}/ (A2A JSON-RPC+SSE)  │      │
 │  └──────┬────────────────────┬────────────────────┬──────────────┘      │
 │         │                    │                    │                      │
 │  ┌──────▼───────┐  ┌────────▼────────┐  ┌────────▼──────────┐          │
@@ -241,6 +243,9 @@ agent:
   disallow_transfer_to_peers: false    # Engedélyezett-e a peer-ek közti transfer
   disallow_transfer_to_parent: false   # Visszatérhet-e a szülő agenthez
 
+  # A2A kiajánlás
+  expose: false                        # true = A2A végpontként kiajánlva (/a2a/agents/{name}/)
+
   # Eszközök
   tools:
     mcp:
@@ -326,6 +331,7 @@ root_agent:
     # Intent classification, task decomposition, multi-agent chaining...
   generate_content_config:
     thinking: true
+  expose: true                      # A2A végpontként kiajánlva (/a2a/root-agents/{name}/)
 ```
 
 Az `instruction` mezőben használható template változók:
@@ -1212,20 +1218,45 @@ async def lifespan(app):
         interaction_broker.register_channel(whatsapp)
         await whatsapp.setup_routes(app)
 
-    # 6. App state
+    # 6. A2A Gateway — expose: true definíciók kiajánlása
+    a2a_gw = A2AGateway(agent_factory, root_manager, session_manager, ...)
+    await a2a_gw.initialize()
+    for key, ep in a2a_gw.endpoints.items():
+        app.mount(a2a_gw._mount_path(ep.kind, ep.name), ep.starlette_app)
+
+    # 7. App state
     app.state.agent_factory = agent_factory
     app.state.session_manager = session_manager
     app.state.root_agent_manager = root_manager
     app.state.interaction_broker = interaction_broker
     app.state.event_bus = event_bus
     app.state.cost_tracker = cost_tracker
+    app.state.a2a_gateway = a2a_gw
 
     yield  # App fut
 
-    # 7. Cleanup
+    # 8. Cleanup
     interaction_store.close()
     await event_bus.shutdown()
 ```
+
+### 11.1 A2A Gateway inicializálás
+
+Az `A2AGateway` a startup során:
+
+1. Bejárja az `AgentFactory` és `RootAgentManager` definíciókat, szűr `expose: true`-ra
+2. Bejárja a `flows_dir` YAML fájlokat, szűr `expose: true`-ra
+3. Minden kiajánlott definícióhoz:
+   - `AgentCardBuilder`-rel generálja az agent card-ot
+   - Lazy `runner_factory` async függvényt hoz létre (friss `Runner` + `InMemorySessionService` per-request)
+   - `A2aAgentExecutor`-t példányosít a runner factory-val
+   - `A2AStarletteApplication.build()`-del Starlette sub-app-et épít
+4. A sub-app-eket a FastAPI alkalmazásba mountolja (`/a2a/{kind}/{name}/`)
+
+**Fájlok:**
+- `backend/src/shared/a2a/gateway.py` — A2AGateway szolgáltatás
+- `backend/src/shared/a2a/flow_wrapper.py` — FlowWrapperAgent (flow → ADK Agent wrapper)
+- `backend/src/routers/a2a_gateway.py` — `/a2a/catalog` REST endpoint
 
 ---
 
@@ -1299,6 +1330,17 @@ async def lifespan(app):
 | `GET` | `/api/events/stream` | SSE eseményfolyam |
 | `GET` | `/api/llm/providers` | LLM providerek és modellek |
 | `GET` | `/health` | Szerver állapot |
+
+### A2A Protocol
+
+| Metódus | Útvonal | Leírás |
+|---------|---------|--------|
+| `GET` | `/.well-known/agents.json` | Kiajánlott agent card URL-ek listája |
+| `GET` | `/a2a/catalog` | Kiajánlott A2A endpointok katalógusa |
+| `GET` | `/a2a/agents/{name}/.well-known/agent-card.json` | Ágens agent card |
+| `GET` | `/a2a/root-agents/{name}/.well-known/agent-card.json` | Root ágens agent card |
+| `GET` | `/a2a/flows/{name}/.well-known/agent-card.json` | Flow agent card |
+| `POST` | `/a2a/{kind}/{name}/` | JSON-RPC 2.0 endpoint (`tasks/send`, `tasks/sendSubscribe`) |
 
 ---
 

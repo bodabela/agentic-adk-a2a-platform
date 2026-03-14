@@ -65,6 +65,8 @@ class AgentDefinition(BaseModel):
     # Peer transfer control
     disallow_transfer_to_peers: bool = False     # ADK default: peers CAN transfer
     disallow_transfer_to_parent: bool = False    # ADK default: CAN transfer to parent
+    # A2A exposure — when True the agent is served as a standard A2A endpoint
+    expose: bool = False
 
     @property
     def effective_output_key(self) -> str:
@@ -95,3 +97,5 @@ class RootAgentDefinition(BaseModel):
     generate_content_config: GenerateContentConfig = Field(
         default_factory=GenerateContentConfig,
     )
+    # A2A exposure — when True the root agent is served as a standard A2A endpoint
+    expose: bool = False

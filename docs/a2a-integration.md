@@ -1,279 +1,254 @@
-# Google A2A Integration
+# A2A Gateway — Agent-to-Agent protokoll integráció
 
-> A rendszer Google Agent-to-Agent (A2A) protokoll kihasználtságának dokumentációja.
-
----
-
-## Következő fejlesztési prioritások
-
-### 1. Thinking metadata továbbfejlesztése
-
-**Prioritás:** Magas | **Jelenlegi állapot:** Részleges
-
-Jelenleg a thinking output sima szövegként streamelődik a `thinking` SSE event-ben. Az A2A spec strukturált metadata-t definiál, amit meg kellene valósítani:
-
-- **Phase tracking** — az agent gondolkodási fázisainak jelzése (analyzing, planning, generating, reviewing)
-- **Confidence score** — bizonyossági szint az egyes válaszrészekhez (0.0–1.0)
-- **Reasoning steps** — strukturált lépések listája a döntéshozatali folyamatból
-- **Summary** — tömör összefoglaló a gondolkodási folyamatról
-
-**Érintett fájlok:**
-- `modules/coder_agent/agent/serve_a2a.py` — thinking event payload bővítése
-- `backend/src/flow_engine/engine.py` — strukturált thinking feldolgozás
-- Frontend — thinking vizualizáció frissítése
-
-### 2. Agent-to-Agent capability negotiation
-
-**Prioritás:** Közepes | **Jelenlegi állapot:** Implementált (Flows), Részleges (Tasks)
-
-Implementált funkciók:
-
-- **Dinamikus skill discovery** — AgentRegistry futásidőben lekérdezi az agent card-okat és cache-eli a skill-eket
-- **Capability matching** — Flow Engine a `required_skill` és `required_capabilities` alapján választja ki a legalkalmasabb agentet
-- **Graceful degradation** — ha az elsődleges agent nem elérhető, `fallback_agent` aktiválódik; ha semmi nem elérhető, `on_error` state-re ugrik
-- **Version negotiation** — protokoll verzió ellenőrzés az agentek között (warning, nem blokkoló)
-- **Dinamikus registry refresh** — 30 másodpercenként frissíti az agent státuszokat, loggol ha agent live/offline állapota megváltozik
-- **Pre-flight validáció** — flow indítása előtt ellenőrzi az összes `agent_task` node agent-elérhetőségét
-
-Nem implementált (Tasks / ADK sub-agent kontextus):
-- Skill-alapú agent routing az ADK LoopAgent architektúrán belül
-
-**Érintett fájlok:**
-- `backend/src/orchestrator/agent_registry.py` — capability cache, matching logika, refresh loop
-- `backend/src/flow_engine/engine.py` — dinamikus agent kiválasztás, pre-flight validáció
-- `modules/*/agent/agent_card.json` — strukturált capability, skill és protocolVersion definíciók
+> A platform Google A2A (Agent-to-Agent) protokollon keresztül kiajánlja az ágenseket, root ágenseket és flow-kat szabványos, külső rendszerek számára elérhető szolgáltatásként.
 
 ---
 
 ## Protokoll verzió
 
-**A2A Protocol v0.3** — JSON-RPC + Server-Sent Events (SSE) alapú kommunikáció.
+**A2A Protocol v0.3** — JSON-RPC 2.0 + Server-Sent Events (SSE) alapú kommunikáció.
+
+**Függőségek:**
+- `google-adk>=1.26.0` — `A2aAgentExecutor`, `AgentCardBuilder`, `Runner`
+- `a2a-sdk[http-server]>=0.3.24` — `A2AStarletteApplication`, `DefaultRequestHandler`, `InMemoryTaskStore`
 
 ---
 
-## Implementált funkciók
+## Architektúra áttekintés
 
-### Core protokoll
+```
+Külső A2A kliens (vagy másik platform)
+     │
+     │  JSON-RPC 2.0 + SSE
+     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        FastAPI Backend                           │
+│                                                                 │
+│  /.well-known/agents.json          Agent card URL-ek listája     │
+│  /a2a/catalog                     Összes kiajánlott endpoint    │
+│                                                                 │
+│  /a2a/agents/{name}/              ┐                             │
+│  /a2a/root-agents/{name}/         ├─ Per-endpoint Starlette app │
+│  /a2a/flows/{name}/               ┘                             │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────────────────────────────────────────────┐       │
+│  │              A2AGateway service                      │       │
+│  │                                                     │       │
+│  │  A2AStarletteApplication                            │       │
+│  │    └─ DefaultRequestHandler                         │       │
+│  │         └─ A2aAgentExecutor                         │       │
+│  │              └─ Runner (lazy factory, per-request)   │       │
+│  │                   └─ Agent / LoopAgent / FlowWrapper │       │
+│  └─────────────────────────────────────────────────────┘       │
+│                              │                                  │
+└──────────────────────────────┼──────────────────────────────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+        Google ADK       MCP Tool Servers   LLM Providers
+        Runner           (FastMCP)          (Google, Anthropic,
+                         stdio│sse│http      OpenAI)
+```
 
-| Funkció | Státusz | Leírás |
+### Per-endpoint A2A stack
+
+Minden kiajánlott végpont egy teljes A2A serving stack-et kap:
+
+```
+A2AStarletteApplication.build()     ← Starlette sub-app, mountolva a FastAPI-ba
+  └─ DefaultRequestHandler          ← JSON-RPC protokoll kezelés
+       └─ A2aAgentExecutor          ← Google ADK wrapper A2A-hoz
+            └─ runner_factory()     ← Lazy, aszinkron Runner factory (per-request)
+                 └─ Runner(agent)   ← ADK Agent/LoopAgent/FlowWrapperAgent
+```
+
+---
+
+## Az `expose` flag
+
+Minden definíció típusban (agent, root agent, flow) az `expose: true` YAML flag jelzi, hogy a platform kiajánlja A2A végpontként:
+
+### Agent (`agent.yaml`)
+
+```yaml
+agent:
+  name: "calendar_agent"
+  description: "Calendar management agent"
+  # ... egyéb mezők ...
+  expose: true                    # ← A2A-n keresztül elérhető lesz
+```
+
+### Root Agent (`*.root.yaml`)
+
+```yaml
+root_agent:
+  name: "personal_assistant"
+  description: "Personal assistant orchestrator"
+  # ... egyéb mezők ...
+  expose: true                    # ← A2A-n keresztül elérhető lesz
+```
+
+### Flow (`*.flow.yaml`)
+
+```yaml
+flow:
+  name: "meeting_prep"
+  description: "Meeting preparation workflow"
+  # ... egyéb mezők ...
+  expose: true                    # ← A2A-n keresztül elérhető lesz
+```
+
+**Alapértelmezés:** `expose: false` — explicit bekapcsolás szükséges.
+
+---
+
+## Végpontok
+
+### Platform-szintű
+
+| Metódus | Útvonal | Leírás |
 |---------|---------|--------|
-| JSON-RPC üzenetformátum | Teljes | `tasks/send` (szinkron) + `tasks/sendSubscribe` (streaming) |
-| SSE streaming | Teljes | 5 event típus: `streaming_text`, `thinking`, `tool_call`, `tool_result`, `final` |
-| Agent discovery | Teljes | `GET /.well-known/agent.json` endpoint |
-| Health check | Teljes | `GET /health` endpoint |
-| Session continuity | Teljes | `task_id → session_id` mapping multi-turn beszélgetéshez |
-| Szinkron fallback | Teljes | Ha a streaming nem elérhető, `tasks/send`-re esik vissza |
+| `GET` | `/.well-known/agents.json` | Kiajánlott agent card URL-ek listája (discovery) |
+| `GET` | `/a2a/catalog` | Összes kiajánlott endpoint listája a teljes agent card-okkal |
 
-### Google ADK integráció
+### Per-endpoint (automatikusan generált)
 
-- **Runner**: `google.adk.runners.Runner` — agent futtatás streaming támogatással
-- **Session Service**: `google.adk.sessions.InMemorySessionService` — session perzisztencia
-- **Streaming Config**: `RunConfig(streaming_mode=StreamingMode.SSE)`
-- **Model override**: Per-request model kiválasztás a `params["model"]` mezőn keresztül
+Minden `expose: true` definícióhoz a rendszer automatikusan létrehozza:
 
-### Agent Registry
+| Útvonal minta | Leírás |
+|---------------|--------|
+| `/a2a/agents/{name}/` | Ágens A2A endpoint (JSON-RPC) |
+| `/a2a/root-agents/{name}/` | Root ágens A2A endpoint (JSON-RPC) |
+| `/a2a/flows/{name}/` | Flow A2A endpoint (JSON-RPC) |
 
-- Automatikus agent discovery a `modules/*/module.yaml` fájlokból
-- A2A URL kinyerése az `a2a: {host, port}` konfigurációból
-- Élő agent card lekérdezés `GET /.well-known/agent.json` hívással
-- Health check és agent állapot cache-elés
-- **ÚJ:** `skills` lista cache-elése az agent card-ból (id, name, description, inputModes, outputModes, tags, version)
-- **ÚJ:** `protocol_version` cache-elése és kompatibilitás ellenőrzés
-- **ÚJ:** `find_agent_by_skill(skill_id)` — skill ID alapján keres élő agentet
-- **ÚJ:** `find_best_agent(required_skill, required_capabilities)` — capability-alapú optimális agent választás
-- **ÚJ:** `is_protocol_compatible(name)` — protokoll verzió egyeztetés
-- **ÚJ:** `start_refresh_loop(interval_seconds=30)` — háttér task, agent státusz periodikus frissítése
+Minden per-endpoint Starlette alkalmazás a szabványos A2A útvonalakat szolgálja ki:
 
-### Capability Negotiation (Flow Engine)
+| Útvonal (relatív) | Leírás |
+|--------------------|--------|
+| `/.well-known/agent-card.json` | Az endpoint agent card-ja |
+| `/` | JSON-RPC 2.0 endpoint (`tasks/send`, `tasks/sendSubscribe`) |
 
-- **ÚJ:** `_resolve_agent_for_task(node)` — agent feloldási lánc:
-  1. Explicit `agent` név → health check → `fallback_agent`
-  2. `required_skill` + `required_capabilities` → registry lookup
-  3. Ha semmi nem talált → `RuntimeError` (on_error state aktiválódik)
-- **ÚJ:** `flow_agent_negotiated` event — ha fallback vagy skill-match alapú routing történt
-- **ÚJ:** `flow_agent_unavailable` event — ha egyetlen agent sem elérhető
-- **ÚJ:** `validate_agent_requirements(flow)` — pre-flight validáció, `flow_validation_warning` event
-- **ÚJ:** Proper error propagation — soft-fail helyett `RuntimeError`, az `on_error` state valóban aktiválódik
+**Példa URL-ek** (alapértelmezett konfiguráció):
 
-### Cost Tracking
-
-- Usage metadata kinyerése az A2A válaszokból (input/output tokenek, latency, model, provider)
-- `CostTracker.record_llm_call()` integráció
-- Költségszámítás token árak alapján
+```
+http://localhost:8000/a2a/agents/calendar_agent/.well-known/agent-card.json
+http://localhost:8000/a2a/root-agents/personal_assistant/.well-known/agent-card.json
+http://localhost:8000/a2a/flows/meeting_prep/.well-known/agent-card.json
+http://localhost:8000/.well-known/agents.json
+http://localhost:8000/a2a/catalog
+```
 
 ---
 
-## SSE streaming event típusok
+## Agent Card generálás
 
-| Event | Leírás | Payload |
-|-------|--------|---------|
-| `streaming_text` | Token-by-token szöveg output | `{task_id, author, text, is_thought: false}` |
-| `thinking` | Agent gondolkodás/reasoning | `{task_id, author, text, is_thought: true}` |
-| `tool_call` | Tool meghívás argumentumokkal | `{task_id, author, tool_name, tool_args}` |
-| `tool_result` | Tool végrehajtás eredménye | `{task_id, author, tool_name, tool_response}` |
-| `final` | Végső eredmény teljes válasszal | `{jsonrpc, id, result: {artifacts, usage}}` |
+Az agent card-okat a Google ADK `AgentCardBuilder` automatikusan generálja az ágens definícióból:
 
-### Flow Engine event típusok (capability negotiation)
+- **name** — a YAML `name` mezőből
+- **description** — a YAML `description` mezőből
+- **version** — a YAML `version` mezőből
+- **url** — `{a2a_base_url}/a2a/{kind}/{name}/`
+- **capabilities** — `streaming: true`
+- **skills** — a YAML `capabilities` lista alapján generálva (agent/root agent), vagy a flow `trigger.input_schema` alapján (flow)
+- **defaultInputModes / defaultOutputModes** — `["text/plain"]`
 
-| Event | Leírás | Payload |
-|-------|--------|---------|
-| `flow_agent_negotiated` | Fallback vagy skill-match alapú routing | `{flow_id, state, requested_agent, resolved_agent, required_skill, negotiation}` |
-| `flow_agent_unavailable` | Egyetlen agent sem elérhető | `{flow_id, state, agent, required_skill}` |
-| `flow_validation_warning` | Pre-flight: agent elérhetőségi problémák | `{flow_id, issues: [...]}` |
+### Platform discovery endpoint
+
+A `/.well-known/agents.json` a kiajánlott endpoint-ok agent card URL-jeinek listáját adja vissza:
+
+```json
+[
+  "http://localhost:8000/a2a/agents/calendar_agent/.well-known/agent-card.json",
+  "http://localhost:8000/a2a/agents/research_agent/.well-known/agent-card.json",
+  "http://localhost:8000/a2a/root-agents/personal_assistant/.well-known/agent-card.json",
+  "http://localhost:8000/a2a/flows/meeting_prep/.well-known/agent-card.json"
+]
+```
+
+Egy külső rendszer egyetlen GET hívással megtudja, milyen agenteket fedezhet fel, majd egyesével lekérheti a tényleges card-okat.
 
 ---
 
-## Kommunikációs flow
+## Flow-k kiajánlása
+
+A flow-k speciális kezelést igényelnek, mivel nem ADK Agent-ek. A `FlowWrapperAgent` wrapper osztály egy ADK `Agent`-et hoz létre egyetlen `run_flow` tool-lal:
 
 ```
-Frontend (React)
-     │ SSE
-     ▼
-Flow Engine (FastAPI)
-     │ capability negotiation → AgentRegistry
-     │ A2A JSON-RPC + SSE
-     ▼
-Module Agent (FastAPI A2A Server)
-     │ Google ADK Runner
-     ▼
-Gemini LLM
-     │ MCP (stdio)
-     ▼
-MCP Tool Servers
+FlowWrapperAgent.build_agent()
+  └─ Agent(name=flow_name, tools=[run_flow])
+       └─ run_flow(input: str)    ← Parsolja a flow YAML-t, létrehozza a FlowEngine-t,
+                                     végrehajtja, és JSON-ként adja vissza az eredményt
 ```
 
-### Részletes task delegálás
-
-1. `FlowEngine._resolve_agent_for_task()` — agent feloldás: explicit → health check → fallback → skill-match
-2. `FlowEngine._handle_agent_task()` — task input feloldása, A2A prompt építése
-3. `_call_agent_a2a()` — agent kikeresése a registry-ből, version check, JSON-RPC payload összeállítása
-4. `POST /tasks/sendSubscribe` — streaming hívás az agent felé
-5. SSE stream feldolgozás — eventek továbbítása a frontend felé az Event Bus-on keresztül
-6. `parse_a2a_result()` — artifacts + usage kinyerése a végső válaszból
-7. Fallback: ha a streaming sikertelen, `POST /` szinkron hívás `tasks/send` metódussal
-
-### Prompt építés
-
-A `_build_a2a_prompt()` metódus a task_input dict-et szöveggé alakítja:
-
-```
-Input:  {"requirement": "Build REST API", "stack": "Node.js"}
-Output: "requirement: Build REST API\nstack: Node.js"
-```
-
-User feedback kérdések és válaszok is beépülnek a promptba.
-
----
-
-## Nem implementált A2A funkciók
-
-| Funkció | Megjegyzés |
-|---------|------------|
-| **gRPC transport** | Csak HTTP JSON-RPC + SSE van implementálva. gRPC alacsonyabb latency-t adna. |
-| **Push notifications** | Az agent card-ban deklarálva, de nincs mögötte működő implementáció. Jelenleg polling/SSE alapú. |
-| **State transition history** | Deklarálva az agent card-ban, de nem működik — nincs audit trail az állapotátmenetekről. |
-| **OAuth 2 autentikáció** | Nincs auth middleware az A2A endpointokon. Produkciós környezetben szükséges lenne. |
-| **Extended agent card** | `supportsAuthenticatedExtendedCard: false` — nem használt. |
-| **Per-event cost metadata** | Költségadatok csak a `final` event-ben érkeznek, nem streaming közben. |
-
----
-
-## Részlegesen implementált funkciók
-
-| Funkció | Jelenlegi állapot | Hiányzik |
-|---------|-------------------|----------|
-| **Artifact típusok** | Csak `text/plain` | Multimedia, kód-blokk, markdown típusú artifact-ok |
-| **Thinking metadata** | Sima text streaming | Strukturált metadata: phase, confidence, reasoning_steps |
-| **Agent questions** | Regex-alapú kinyerés a válaszból | First-class A2A támogatás strukturált kérdésekhez |
-| **Version negotiation** | Warning logolás, nem blokkoló | Semver kompatibilitás, blokkoló policy opció |
+Az agent instrukciója tartalmazza a flow leírását és az elvárt input schema-t, így az LLM tudja, hogyan kell használni a `run_flow` tool-t.
 
 ---
 
 ## Konfiguráció
 
-### module.yaml (agent konfiguráció)
+### Környezeti változó / Settings
 
-```yaml
-a2a:
-  host: "127.0.0.1"
-  port: 8001
-
-agent:
-  model: "gemini-2.5-flash"
-  model_fallback: "gemini-2.5-flash"
-  max_tokens: 8192
-  capabilities:
-    - "code_generation"
-    - "code_modification"
-    - "hotfix_creation"
+```env
+# A2A agent card-okban használt publikus alap URL
+APP_A2A_BASE_URL=http://localhost:8000
 ```
 
-### agent_card.json (A2A discovery)
+**Pydantic Settings mező:** `backend/src/config.py` → `Settings.a2a_base_url`
 
-```json
-{
-  "name": "coder_agent",
-  "description": "Code generation and modification",
-  "version": "0.1.0",
-  "protocolVersion": "0.3",
-  "capabilities": {
-    "streaming": true,
-    "pushNotifications": false,
-    "stateTransitionHistory": true
-  },
-  "skills": [
-    {
-      "id": "generate_code",
-      "name": "Code Generation",
-      "description": "Generate source code from specifications",
-      "inputModes": ["text/plain", "application/json"],
-      "outputModes": ["text/plain"],
-      "tags": ["code", "generation"],
-      "version": "1.0"
-    }
-  ]
-}
-```
+### YAML flag
 
-### Flow DSL (capability negotiation)
+Az `expose` flag hozzáadása:
 
-```yaml
-# Explicit agent (eredeti viselkedés — backward compatible)
-generate_code:
-  type: agent_task
-  agent: coder_agent
-  on_error: handle_error
-  ...
-
-# Skill-alapú dinamikus kiválasztás (ÚJ)
-generate_code:
-  type: agent_task
-  required_skill: generate_code
-  required_capabilities: [streaming]
-  fallback_agent: coder_agent
-  on_error: handle_error
-  ...
-```
+| Definíció típus | Fájl minta | YAML kulcs |
+|-----------------|------------|------------|
+| Agent | `agents/*/agent.yaml` | `agent.expose: true` |
+| Root Agent | `root_agents/*.root.yaml` | `root_agent.expose: true` |
+| Flow | `flows/*.flow.yaml` | `flow.expose: true` |
 
 ---
 
-## Kulcs fájlok
+## Implementáció részletek
+
+### Inicializálás (startup)
+
+A `main.py` lifespan-ben:
+
+1. Az `A2AGateway` példányosítása az `AgentFactory`, `RootAgentManager`, `SessionManager` stb. referenciákkal
+2. `a2a_gw.initialize()` — bejárja az összes definíciót, `expose: true` szűrés, A2A stack építése
+3. Minden `ExposedEndpoint` Starlette sub-app-je mount-olásra kerül a FastAPI alkalmazásba
+
+### Lazy Runner factory
+
+Az `A2aAgentExecutor` egy `Callable[..., Runner | Awaitable[Runner]]` factory-t kap. Ez minden kéréshez friss `Runner` + `InMemorySessionService` példányt hoz létre, biztosítva a kérések közötti izoláltságot.
+
+### Kulcs fájlok
 
 | Fájl | Szerep |
 |------|--------|
-| `modules/coder_agent/agent/serve_a2a.py` | FastAPI A2A server endpointok |
-| `modules/coder_agent/agent/agent.py` | ADK Agent definíció |
-| `modules/coder_agent/agent/agent_card.json` | Agent metadata, capabilities, skills, protocolVersion |
-| `modules/coder_agent/module.yaml` | Agent konfiguráció |
-| `modules/user_agent/agent/agent_card.json` | User interaction agent metadata |
-| `backend/src/flow_engine/engine.py` | A2A client, capability negotiation, task delegálás, event emission |
-| `backend/src/flow_engine/dsl/schema.py` | Flow DSL: AgentTaskNode (required_skill, fallback_agent) |
-| `backend/src/orchestrator/agent_registry.py` | Agent discovery, skill cache, matching, refresh loop |
-| `backend/src/orchestrator/a2a_client.py` | A2A process manager (dev) |
-| `backend/src/events/bus.py` | Event broadcasting a frontend felé |
+| `backend/src/shared/a2a/gateway.py` | A2AGateway szolgáltatás — endpoint scanning, card building, Starlette app mounting |
+| `backend/src/shared/a2a/flow_wrapper.py` | FlowWrapperAgent — flow-t ADK Agent-ként csomagol |
+| `backend/src/routers/a2a_gateway.py` | `/a2a/catalog` REST endpoint |
+| `backend/src/main.py` | Lifespan: A2AGateway init + mount, `/.well-known/agents.json` platform card |
+| `backend/src/config.py` | `a2a_base_url` setting |
+| `backend/src/shared/agents/schema.py` | `AgentDefinition.expose`, `RootAgentDefinition.expose` |
+| `backend/src/features/flows/engine/dsl/schema.py` | `FlowDefinition.expose` |
+| `backend/src/features/flows/engine/dsl/parser.py` | `expose` flag parsing |
+
+---
+
+## Nem implementált funkciók
+
+| Funkció | Megjegyzés |
+|---------|------------|
+| **RemoteA2aAgent (kliens oldal)** | Külső A2A szolgáltatások fogyasztása sub-agentként — későbbi fázisban tervezett |
+| **Push notifications** | Jelenleg nincs implementálva; polling/SSE alapú |
+| **OAuth 2 autentikáció** | Nincs auth middleware az A2A endpointokon — produkciós környezetben szükséges |
+| **gRPC transport** | Csak HTTP JSON-RPC + SSE van implementálva |
+| **Extended agent card** | `supportsAuthenticatedExtendedCard` — nem használt |
 
 ---
 
 ## Összegzés
 
-A rendszer az A2A spec **~70-75%-át** használja ki. A core protokoll (discovery, JSON-RPC, SSE streaming, session management, cost tracking) teljes mértékben működik. A capability negotiation (skill-alapú agent kiválasztás, fallback, version check, registry refresh) a Flow Engine szintjén implementált. A fő fennmaradó hiányosságok a biztonság (auth), skálázhatóság (gRPC, push notifications) és a strukturált artifact típusok terén vannak.
+A platform az A2A protokoll **kiajánlási (serving) oldalát** valósítja meg: minden `expose: true` definíció szabványos A2A végpontot kap, amelyet bármely A2A-kompatibilis kliens felfedezhet és meghívhat. A belső architektúra a Google ADK `A2aAgentExecutor` + `AgentCardBuilder` és az `a2a-sdk` `A2AStarletteApplication` kombinációjára épül, a platform saját `A2AGateway` szolgáltatásán keresztül összekötve. A fogyasztási oldal (RemoteA2aAgent) egy későbbi fejlesztési fázisban kerül implementálásra.

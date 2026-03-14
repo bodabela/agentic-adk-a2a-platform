@@ -19,6 +19,7 @@ A platform egy AI-alapú, moduláris multi-ágens rendszer, amely lehetővé tes
 | **LLM providerek** | Több szolgáltató támogatása: Google Gemini, Anthropic Claude, OpenAI GPT |
 | **Observability** | Prometheus metrikák, Grafana dashboardok, Tempo elosztott nyomkövetés, Langfuse LLM analytics |
 | **Multi-channel** | Emberi interakciók több csatornán: Web UI, Microsoft Teams, WhatsApp (Twilio) |
+| **A2A Gateway** | Ágensek, root ágensek és flow-k kiajánlása szabványos A2A (Agent-to-Agent) protokollon |
 
 ### Architektúra
 
@@ -36,6 +37,7 @@ FastAPI Backend
     ├── Event Bus          → Esemény-broadcast minden kliensnek
     ├── Cost Tracker       → LLM és eszközhasználat költségkövetése
     ├── Interaction Broker → Multi-channel emberi interakciók
+    ├── A2A Gateway        → Ágensek/flow-k kiajánlása A2A protokollon
     ├── Tracing            → OpenTelemetry nyomkövetés
     └── Agent Registry     → Modulok felfedezése és nyilvántartása
          │
@@ -242,6 +244,9 @@ agent:
   # ── Ágens-transzfer szabályozás ─────────────────────
   disallow_transfer_to_peers: false         # true = nem delegálhat más ágenseknek
   disallow_transfer_to_parent: false        # true = nem adhat vissza feladatot a root ágensnek
+
+  # ── A2A kiajánlás ─────────────────────────────────
+  expose: false                             # true = A2A végpontként elérhető (/a2a/agents/{name}/)
 ```
 
 ### 4.2 Mezők részletes leírása
@@ -262,6 +267,7 @@ agent:
 | `tools.builtin` | list[string] | `[]` | Beépített eszközök nevei |
 | `disallow_transfer_to_peers` | bool | `false` | Tiltja a peer ágensekhez delegálást |
 | `disallow_transfer_to_parent` | bool | `false` | Tiltja a szülő (root) ágenshez visszaadást |
+| `expose` | bool | `false` | A2A végpontként kiajánlás (`/a2a/agents/{name}/`) |
 
 ### 4.3 Beépített eszközök (builtin)
 
@@ -539,6 +545,9 @@ root_agent:
   # ── LLM generálási konfig ──────────────────────────
   generate_content_config:
     thinking: true                          # Extended thinking mód
+
+  # ── A2A kiajánlás ─────────────────────────────────
+  expose: false                             # true = A2A végpontként elérhető (/a2a/root-agents/{name}/)
 ```
 
 ### 6.2 Mezők részletes leírása
@@ -554,6 +563,7 @@ root_agent:
 | `sub_agents` | list[string] | `[]` | Sub-ágens nevek listája (az `agents/` könyvtárban definiáltak) |
 | `instruction` | string | `""` | Orkesztrátor utasítás — inline szöveg vagy .md fájl útvonal |
 | `generate_content_config.thinking` | bool | `false` | Extended thinking mód |
+| `expose` | bool | `false` | A2A végpontként kiajánlás (`/a2a/root-agents/{name}/`) |
 
 ### 6.3 Template változók az instrukcióban
 
@@ -652,6 +662,9 @@ flow:
     provider: "google"                      # LLM provider felülbírálás (opcionális)
     model: "gemini-2.5-flash"               # LLM modell felülbírálás (opcionális)
     fallback_model: "gemini-2.5-pro"        # Tartalék modell (opcionális)
+
+  # ── A2A kiajánlás ─────────────────────────────────
+  expose: false                             # true = A2A végpontként elérhető (/a2a/flows/{name}/)
 
   # ── Állapotok ───────────────────────────────────────
   states:
@@ -1433,7 +1446,7 @@ A **root ágens** a központi orkesztrátor:
 
 - Fogadja a felhasználói feladatokat
 - Ismeri az elérhető ágens-modulokat (Agent Registry)
-- Eldönti, melyik modult hívja meg A2A protokollon
+- Eldönti, melyik sub-ágenst hívja meg (transfer_to_*)
 - Összefogja a részeredményeket
 
 ### 10.3 Task vs Flow
@@ -1523,6 +1536,7 @@ agentic-adk-a2a-platform/
 │   │   │   └── tasks/
 │   │   │       └── executor.py       # Task végrehajtó
 │   │   └── shared/
+│   │       ├── a2a/                  # A2A Gateway (expose → A2A endpoint)
 │   │       ├── agents/               # Ágens factory + loader
 │   │       ├── cost/                 # Költségkövetés
 │   │       ├── events/               # Event bus
@@ -1621,6 +1635,8 @@ pnpm dev
 | Backend API | http://localhost:8000 |
 | Swagger UI | http://localhost:8000/docs |
 | SSE Stream | http://localhost:8000/api/events/stream |
+| A2A Discovery | http://localhost:8000/.well-known/agents.json |
+| A2A Catalog | http://localhost:8000/a2a/catalog |
 | Grafana | http://localhost:3000 |
 | Prometheus | http://localhost:9090 |
 | Tempo (query) | http://localhost:3200 |
@@ -1663,6 +1679,17 @@ pnpm dev
 | GET | `/api/traces/{trace_id}` | Trace részletek |
 | GET | `/metrics` | Prometheus metrikák (ha tracing engedélyezett) |
 
+### A2A Protocol
+
+| Metódus | Útvonal | Leírás |
+|---------|---------|--------|
+| GET | `/.well-known/agents.json` | Kiajánlott agent card URL-ek listája |
+| GET | `/a2a/catalog` | Kiajánlott A2A endpointok katalógusa (agent card-okkal) |
+| GET | `/a2a/agents/{name}/.well-known/agent-card.json` | Ágens agent card |
+| GET | `/a2a/root-agents/{name}/.well-known/agent-card.json` | Root ágens agent card |
+| GET | `/a2a/flows/{name}/.well-known/agent-card.json` | Flow agent card |
+| POST | `/a2a/{kind}/{name}/` | A2A JSON-RPC 2.0 endpoint (`tasks/send`, `tasks/sendSubscribe`) |
+
 ---
 
 ## 14. Gyors referencia — Projekt létrehozás lépésről lépésre
@@ -1694,6 +1721,7 @@ agent:
         server: "tools/mcp_server.py"
     builtin:
       - "send_notification"
+  expose: true                            # A2A-n keresztül elérhető (opcionális)
 ```
 
 `projects/my_project/agents/my_agent/prompts/system_prompt.md`:
@@ -1721,6 +1749,7 @@ root_agent:
     {{ agents_desc }}
   generate_content_config:
     thinking: true
+  expose: true                            # A2A-n keresztül elérhető (opcionális)
 ```
 
 ### 4. Flow definiálása (opcionális)
@@ -1742,6 +1771,7 @@ flow:
   config:
     max_retry_loops: 3
     timeout_minutes: 30
+  expose: true                            # A2A-n keresztül elérhető (opcionális)
   states:
     process:
       type: "agent_task"

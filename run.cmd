@@ -116,6 +116,10 @@ echo   Backend API:  http://localhost:8000
 echo   Swagger UI:   http://localhost:8000/docs
 echo   SSE Stream:   http://localhost:8000/api/events/stream
 echo.
+echo   A2A Protocol:
+echo     Discovery:    http://localhost:8000/.well-known/agents.json
+echo     Catalog:      http://localhost:8000/a2a/catalog
+echo.
 echo   Observability:
 echo     Grafana:      http://localhost:3002  (admin/admin)
 echo     Prometheus:   http://localhost:9090

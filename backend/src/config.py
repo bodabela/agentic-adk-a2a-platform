@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     grafana_base_url: str = "http://localhost:3000"
     langfuse_base_url: str = "http://localhost:3001"
 
+    # A2A gateway — public base URL used in agent cards
+    a2a_base_url: str = "http://localhost:8000"
+
     # CORS (for frontend)
     cors_origins: list[str] = ["http://localhost:5173"]
 

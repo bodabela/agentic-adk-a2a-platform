@@ -78,6 +78,8 @@ make dev-frontend   # http://localhost:5173
 | Frontend | http://localhost:5173 |
 | Backend API | http://localhost:8000 |
 | Swagger UI | http://localhost:8000/docs |
+| A2A Discovery | http://localhost:8000/.well-known/agents.json |
+| A2A Catalog | http://localhost:8000/a2a/catalog |
 | Grafana | http://localhost:3000 (admin/admin) |
 | Langfuse | http://localhost:3001 |
 | Prometheus | http://localhost:9090 |
@@ -158,6 +160,8 @@ export APP_PROJECT=another_project  # Linux/macOS
 | `POST /api/interactions/respond` | Respond to an interaction |
 | `GET /api/sessions/` | List active sessions |
 | `GET /health` | Health check |
+| `GET /.well-known/agents.json` | A2A platform agent card |
+| `GET /a2a/catalog` | A2A endpoint catalog |
 
 ## Testing
 

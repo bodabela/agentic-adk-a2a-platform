@@ -2,6 +2,7 @@ agent:
   name: "research_agent"
   version: "0.1.0"
   description: "Web research - search, fetch, person/company lookup, meeting preparation briefs"
+  expose: true
   category: "personal_assistant"
   model: "gemini-2.5-flash"
   model_fallback: "gemini-2.5-pro"

@@ -2,6 +2,7 @@ agent:
   name: "calendar_agent"
   version: "0.1.0"
   description: "Calendar management - events, scheduling, availability, conflict detection"
+  expose: true
   category: "personal_assistant"
   model: "gemini-2.5-flash"
   model_fallback: "gemini-2.5-pro"

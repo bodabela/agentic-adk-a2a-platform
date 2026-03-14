@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from src.config import Settings
-from src.routers import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api, sessions, traces
+from src.routers import health, tasks, flows, events, llm, agents, root_agents, interactions as interactions_api, tools as tools_api, sessions, traces, a2a_gateway as a2a_gateway_router
 from src.shared.events.bus import EventBus
 from src.shared.cost.tracker import CostTracker
 from src.shared.llm.config import load_llm_config
@@ -134,6 +134,29 @@ async def lifespan(app: FastAPI):
     # Pre-warm MCP server dependencies into filesystem / bytecode cache
     await asyncio.to_thread(_prewarm_mcp_deps)
 
+    # A2A Gateway — expose agents/root-agents/flows as standard A2A endpoints
+    from src.shared.a2a.gateway import A2AGateway
+    flows_dir = Path(settings.flows_dir).resolve()
+
+    a2a_gw = A2AGateway(
+        agent_factory=agent_factory,
+        root_agent_manager=root_agent_manager,
+        session_manager=session_manager,
+        cost_tracker=app.state.cost_tracker,
+        event_bus=app.state.event_bus,
+        llm_config=app.state.llm_config,
+        base_url=settings.a2a_base_url,
+        flows_dir=flows_dir if flows_dir.exists() else None,
+    )
+    await a2a_gw.initialize()
+    app.state.a2a_gateway = a2a_gw
+
+    # Mount each exposed endpoint as a Starlette sub-application
+    for _key, _ep in a2a_gw.endpoints.items():
+        _mount = a2a_gw._mount_path(_ep.kind, _ep.name)
+        app.mount(_mount, _ep.starlette_app)
+        _log.info("A2A endpoint mounted: %s", _mount)
+
     yield
     # Shutdown
     if settings.tracing_enabled:
@@ -209,6 +232,11 @@ app = FastAPI(
             "name": "Admin: Sessions",
             "description": "ADK session lifecycle — list, stop, and delete sessions.",
         },
+        # ── A2A Protocol ──────────────────────────────────
+        {
+            "name": "A2A: Discovery",
+            "description": "Agent-to-Agent protocol discovery — catalog of exposed agents, root agents and flows with standard A2A agent cards.",
+        },
     ],
 )
 
@@ -231,6 +259,18 @@ app.include_router(interactions_api._whatsapp_router, prefix="/api")
 app.include_router(tools_api.router, prefix="/api/tools")
 app.include_router(sessions.router, prefix="/api/sessions")
 app.include_router(traces.router, prefix="/api/traces")
+app.include_router(a2a_gateway_router.router, prefix="/a2a")
+
+# Platform-level A2A discovery — list all exposed agent card URLs
+@app.get("/.well-known/agents.json", include_in_schema=False)
+async def platform_agent_list():
+    gateway = app.state.a2a_gateway
+    base = settings.a2a_base_url.rstrip("/")
+    return [
+        f"{base}{gateway._mount_path(ep.kind, ep.name)}/.well-known/agent-card.json"
+        for ep in gateway.endpoints.values()
+    ]
+
 
 # Prometheus /metrics endpoint
 if settings.tracing_enabled:

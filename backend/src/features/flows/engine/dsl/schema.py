@@ -174,3 +174,5 @@ class FlowDefinition(BaseModel):
     trigger: FlowTrigger = Field(default_factory=FlowTrigger)
     config: FlowConfig = Field(default_factory=FlowConfig)
     states: dict[str, dict[str, Any]]
+    # A2A exposure — when True the flow is served as a standard A2A endpoint
+    expose: bool = False

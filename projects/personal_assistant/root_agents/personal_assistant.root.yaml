@@ -2,6 +2,7 @@ root_agent:
   name: "personal_assistant"
   version: "1.0.0"
   description: "Personal assistant orchestrator - manages calendar, email, documents, tasks, communications, and research"
+  expose: true
   model: "gemini-2.5-flash"
   orchestration:
     strategy: "loop"

@@ -2,6 +2,7 @@ flow:
   name: "meeting_prep"
   version: "1.0.0"
   description: "Prepares a comprehensive brief for upcoming meetings - gathers calendar, research, documents, and email context"
+  expose: true
 
   trigger:
     type: "manual"

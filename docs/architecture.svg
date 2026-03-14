@@ -76,7 +76,7 @@
 
   <!-- API Layer -->
   <rect x="50" y="198" width="800" height="34" rx="6" fill="url(#backendGrad)" opacity="0.9" filter="url(#shadow)"/>
-  <text x="450" y="219" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">REST API &amp; SSE Streaming &amp; A2A Protocol Endpoints</text>
+  <text x="450" y="219" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">REST API &amp; SSE Streaming &amp; /a2a/* A2A Endpoints &amp; /.well-known/agents.json</text>
 
   <!-- Core modules row 1 -->
   <rect x="50" y="246" width="185" height="54" rx="8" fill="url(#coreGrad)" filter="url(#shadow)"/>
@@ -122,8 +122,8 @@
   <text x="555" y="418" text-anchor="middle" fill="#818cf8" font-size="9">stdio / SSE / HTTP</text>
 
   <rect x="665" y="384" width="185" height="42" rx="6" fill="#312e81" stroke="#4338ca" stroke-width="1" filter="url(#shadow)"/>
-  <text x="757" y="405" text-anchor="middle" fill="#a5b4fc" font-size="10" font-weight="600" letter-spacing="0.5">A2A PROTOCOL</text>
-  <text x="757" y="418" text-anchor="middle" fill="#818cf8" font-size="9">Agent-to-Agent v0.3</text>
+  <text x="757" y="405" text-anchor="middle" fill="#a5b4fc" font-size="10" font-weight="600" letter-spacing="0.5">A2A GATEWAY</text>
+  <text x="757" y="418" text-anchor="middle" fill="#818cf8" font-size="9">expose &#8594; Agent Cards + JSON-RPC</text>
 
   <!-- Arrow to LLM providers -->
   <line x1="247" y1="426" x2="247" y2="448" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3"/>
