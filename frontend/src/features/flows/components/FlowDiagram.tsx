@@ -740,10 +740,8 @@ export function FlowDiagram({ definition, activeState, previousState, flowStatus
       </div>
 
       <svg
-        width={width}
-        height={height}
         viewBox={`0 0 ${width} ${height}`}
-        style={{ display: 'block', minWidth: width, minHeight: height }}
+        style={{ display: 'block', width: '100%', height: 'auto' }}
       >
         <defs>
           <marker id="arrow-normal" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">

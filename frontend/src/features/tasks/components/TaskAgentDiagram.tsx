@@ -537,10 +537,8 @@ export function TaskAgentDiagram({ events, status, taskId, traceId }: {
       </div>
 
       <svg
-        width={width}
-        height={height}
         viewBox={`0 0 ${width} ${height}`}
-        style={{ display: 'block', minWidth: width, minHeight: Math.max(height, 80) }}
+        style={{ display: 'block', width: '100%', height: 'auto' }}
       >
         <defs>
           <marker id="task-arrow-normal" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">

@@ -1,10 +1,12 @@
 """Task execution logic — runs root agent via Google ADK."""
 
 import asyncio
+import json
 import time
 import traceback
 
 from fastapi import Request
+from opentelemetry import trace as otel_trace
 
 from src.shared.logging import get_logger
 from src.shared.interactions.models import AgentSuspended
@@ -289,6 +291,13 @@ async def execute_task(task_id: str, submission, request: Request):
             channel=task_channel,
             has_broker=bool(interaction_broker),
         )
+        # Set Langfuse trace output on the task span
+        if _span and final_response_text:
+            _span.set_attribute(
+                "langfuse.trace.output",
+                json.dumps({"response": final_response_text[:5000]}, ensure_ascii=False),
+            )
+
         # Record task duration metric
         if tracing_enabled:
             record_task_duration(task_id, int((time.monotonic() - task_start_time) * 1000))

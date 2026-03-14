@@ -1,8 +1,10 @@
 """Interactions API — unified endpoint for submitting responses across all channels."""
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from opentelemetry import trace
 from pydantic import BaseModel, Field
 
 from src.shared.logging import get_logger
@@ -44,6 +46,12 @@ class InteractionResponseBody(BaseModel):
     response_description="Confirmation with the interaction ID and routing info.",
 )
 async def submit_interaction_response(body: InteractionResponseBody, request: Request):
+    # Set Langfuse trace input on the active (FastAPI root) span
+    span = trace.get_current_span()
+    if span and span.is_recording():
+        trace_input = {"interaction_id": body.interaction_id, "response": str(body.response)[:500]}
+        span.set_attribute("langfuse.trace.input", json.dumps(trace_input, ensure_ascii=False))
+
     broker = request.app.state.interaction_broker
 
     success = await broker.submit_response(

@@ -1,10 +1,12 @@
 """Task management API."""
 
 import asyncio
+import json
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from opentelemetry import trace
 from pydantic import BaseModel, Field
 
 from src.features.tasks.executor import execute_task, pending_interactions, running_tasks
@@ -78,6 +80,18 @@ class TaskInteractionResponse(BaseModel):
 async def create_task(submission: TaskSubmission, request: Request):
     task_id = str(uuid.uuid4())
     event_bus = request.app.state.event_bus
+
+    # Set Langfuse trace input on the active (FastAPI root) span
+    span = trace.get_current_span()
+    if span and span.is_recording():
+        trace_input = {"description": submission.description}
+        if submission.context:
+            trace_input["context"] = submission.context
+        if submission.root_agent_definition:
+            trace_input["agent"] = submission.root_agent_definition
+        span.set_attribute("langfuse.trace.input", json.dumps(trace_input, ensure_ascii=False))
+        span.set_attribute("langfuse.trace.session.id", task_id)
+        span.set_attribute("langfuse.trace.user.id", "user")
 
     await event_bus.emit("task_submitted", {
         "task_id": task_id,
