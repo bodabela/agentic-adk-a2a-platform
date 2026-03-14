@@ -20,6 +20,7 @@ class ChannelAdapter(ABC):
     """
 
     name: str  # channel identifier: "web_ui", "teams", "whatsapp", etc.
+    capabilities: frozenset[str] = frozenset({"text"})  # "text", "a2ui"
 
     @abstractmethod
     async def send_question(self, interaction: Interaction) -> None:

@@ -24,6 +24,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
+import { SimpleMarkdown } from './SimpleMarkdown';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -208,7 +209,7 @@ function RenderComponent({
       const color = isHeading ? undefined : v(MUTED, 'color-mix(in srgb, currentColor 80%, transparent)');
       return (
         <div style={{ fontSize, fontWeight, color, lineHeight: 1.5 }}>
-          {text}
+          <SimpleMarkdown text={text} />
         </div>
       );
     }
@@ -544,6 +545,26 @@ export function A2UIRenderer({
     onSubmit(response);
   }, [data, formState, onSubmit]);
 
+  // Detect if the component tree contains any input fields (TextField, NumberField, DateTimePicker)
+  const hasInputFields = useMemo(() => {
+    for (const [, def] of components) {
+      const type = Object.keys(def.component)[0];
+      if (type === 'TextField' || type === 'NumberField' || type === 'DateTimePicker') {
+        return true;
+      }
+    }
+    return false;
+  }, [components]);
+  const hasFilledInput = (Object.values(formState) as string[]).some((s) => s.trim() !== '');
+
+  const handleFormSubmit = useCallback(() => {
+    const response: Record<string, unknown> = { action: 'submit_text' };
+    for (const [key, value] of Object.entries(formState) as [string, string][]) {
+      if (value.trim()) response[key] = value;
+    }
+    onSubmit(response);
+  }, [formState, onSubmit]);
+
   if (!rootId || components.size === 0) {
     return <div>Invalid A2UI payload</div>;
   }
@@ -559,6 +580,29 @@ export function A2UIRenderer({
         formState={formState}
         onFormChange={handleFormChange}
       />
+      {hasInputFields && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <button
+            onClick={handleFormSubmit}
+            disabled={!hasFilledInput}
+            style={{
+              padding: '0.5rem 1.25rem',
+              background: hasFilledInput ? v(PRIMARY, styles.primaryColor) : 'transparent',
+              color: hasFilledInput ? '#fff' : 'inherit',
+              border: hasFilledInput ? 'none' : `1px solid ${v(BTN_SEC_BORDER, 'color-mix(in srgb, currentColor 30%, transparent)')}`,
+              borderRadius: v(RADIUS, '6px'),
+              cursor: hasFilledInput ? 'pointer' : 'default',
+              fontSize: 'inherit',
+              fontFamily: 'inherit',
+              fontWeight: 500,
+              width: '100%',
+              opacity: hasFilledInput ? 1 : 0.4,
+            }}
+          >
+            Send
+          </button>
+        </div>
+      )}
     </div>
   );
 }

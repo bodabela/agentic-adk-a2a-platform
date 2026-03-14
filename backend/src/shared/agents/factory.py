@@ -25,13 +25,17 @@ def _extract_a2ui(text: str) -> list[dict] | None:
     """Extract A2UI JSON payload from text containing <a2ui>...</a2ui> tags.
 
     LLMs produce JSON with varying levels of escaping depending on how many
-    serialization layers the text passes through. This function handles it
-    by iteratively unescaping until valid JSON is found (up to 5 rounds).
+    serialization layers the text passes through. This function handles:
+    - Direct JSON arrays
+    - Double-serialized JSON (json.loads returns a string → parse again)
+    - Markdown code blocks around JSON
+    - Iterative unescaping up to 5 rounds
 
     Returns the parsed JSON list if found and valid, otherwise None.
     """
     import re
-    match = re.search(r"<a2ui>(.*?)</a2ui>", text, re.DOTALL)
+    # Use greedy match to handle JSON that may contain ">" characters
+    match = re.search(r"<a2ui>(.*)</a2ui>", text, re.DOTALL)
     if not match:
         return None
 
@@ -41,8 +45,15 @@ def _extract_a2ui(text: str) -> list[dict] | None:
         s = s.strip()
         if not s:
             return None
+        # Strip markdown code block wrappers if present
+        s = re.sub(r"^```(?:json)?\s*", "", s)
+        s = re.sub(r"\s*```$", "", s)
+        s = s.strip()
         try:
             payload = json.loads(s)
+            # Handle double-serialized JSON: json.loads returns a string
+            if isinstance(payload, str):
+                payload = json.loads(payload)
             if isinstance(payload, list):
                 return payload
         except (json.JSONDecodeError, TypeError):
@@ -52,6 +63,8 @@ def _extract_a2ui(text: str) -> list[dict] | None:
         if m:
             try:
                 payload = json.loads(m.group(1))
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
                 if isinstance(payload, list):
                     return payload
             except (json.JSONDecodeError, TypeError):
@@ -65,6 +78,7 @@ def _extract_a2ui(text: str) -> list[dict] | None:
         s = s.replace("\\t", "\t")       # \t → tab
         s = s.replace('\\"', '"')        # \" → "
         s = s.replace("\\'", "'")        # \' → '
+        s = s.replace("\\/", "/")        # \/ → / (JSON forward-slash escaping)
         s = re.sub(r"\\\n", "\n", s)     # trailing \ before newline (line continuation)
         s = s.replace("\x00BACKSLASH\x00", "\\")  # restore single backslashes
         s = re.sub(r",\s*([}\]])", r"\1", s)  # trailing commas
@@ -83,7 +97,7 @@ def _extract_a2ui(text: str) -> list[dict] | None:
         if result:
             return result
 
-    logger.warning("a2ui_extract_failed", raw_length=len(raw), raw_preview=raw[:200])
+    logger.warning("a2ui_extract_failed", raw_length=len(raw), raw_preview=raw[:300])
     return None
 
 
@@ -380,6 +394,9 @@ class AgentFactory:
             return exit_loop
 
         if name == "ask_user":
+            # A2A context: use LongRunningFunctionTool (returns input-required)
+            if channel == "a2a":
+                return self._create_ask_user_tool_a2a()
             # Prefer broker-based ask_user if broker is available
             if interaction_broker:
                 return self._create_ask_user_tool_broker(
@@ -564,6 +581,41 @@ class AgentFactory:
             return response
 
         return ask_user
+
+    def _create_ask_user_tool_a2a(self):
+        """Create ask_user as a LongRunningFunctionTool for A2A context.
+
+        When an agent is exposed via A2A, there is no interactive channel
+        (web_ui, Teams, etc.) to wait on.  Instead, the tool returns None
+        immediately which causes the ADK to emit an event with
+        ``long_running_tool_ids`` set.  The A2A event converter translates
+        this into ``TaskState.input_required`` so the calling client
+        (e.g. the MCP bridge) can relay the question to the human and
+        send a follow-up message with the answer.
+        """
+        from google.adk.tools.long_running_tool import LongRunningFunctionTool
+
+        def ask_user(
+            question: str,
+            question_type: str = "free_text",
+            options: list[str] | None = None,
+            tool_context=None,
+        ) -> None:
+            """Ask the human user a question and wait for their response.
+
+            Args:
+                question: The question to ask the user.
+                question_type: One of "free_text", "choice", or "confirmation".
+                options: For "choice" type, the list of options to present.
+
+            Returns:
+                The user's response (delivered asynchronously via follow-up message).
+            """
+            if tool_context:
+                tool_context.actions.skip_summarization = True
+            return None  # Signals "pending" → ADK sets input-required
+
+        return LongRunningFunctionTool(func=ask_user)
 
     def _create_send_notification_tool(
         self,

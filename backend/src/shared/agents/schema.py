@@ -94,6 +94,7 @@ class RootAgentDefinition(BaseModel):
     )
     sub_agents: list[str] = Field(default_factory=list)   # agent names
     instruction: str = ""                       # inline or file path
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
     generate_content_config: GenerateContentConfig = Field(
         default_factory=GenerateContentConfig,
     )

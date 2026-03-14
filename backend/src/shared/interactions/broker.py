@@ -68,6 +68,11 @@ class InteractionBroker:
     def available_channels(self) -> list[str]:
         return list(self._channels.keys())
 
+    def get_channel_capabilities(self, channel: str) -> frozenset[str]:
+        """Return the declared capabilities for a channel (e.g. {'text', 'a2ui'})."""
+        adapter = self._channels.get(channel)
+        return adapter.capabilities if adapter else frozenset({"text"})
+
     def set_resume_callback(self, callback: Any) -> None:
         """Set the callback to invoke when a suspended agent should resume."""
         self._resume_callback = callback

@@ -150,7 +150,7 @@ class A2AGateway:
         session_mgr = self._session_manager
 
         async def runner_factory() -> Runner:
-            adk_agent = factory.create_agent(name)
+            adk_agent = factory.create_agent(name, channel="a2a")
             service, _ = await session_mgr.get_or_create(
                 f"a2a_{name}", app_name="a2a_gateway",
             )
@@ -195,6 +195,7 @@ class A2AGateway:
         async def runner_factory() -> Runner:
             root_agent = root_mgr.create_root_agent(
                 name, model_override=default_model, event_bus=event_bus,
+                channel="a2a",
             )
             service, _ = await session_mgr.get_or_create(
                 f"a2a_root_{name}", app_name="a2a_gateway",

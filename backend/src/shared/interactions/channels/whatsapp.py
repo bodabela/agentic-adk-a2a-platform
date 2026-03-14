@@ -31,6 +31,7 @@ class WhatsAppChannel(ChannelAdapter):
     """WhatsApp Business integration via Twilio API."""
 
     name = "whatsapp"
+    capabilities = frozenset({"text"})
 
     def __init__(
         self,

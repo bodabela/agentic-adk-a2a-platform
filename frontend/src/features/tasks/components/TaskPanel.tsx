@@ -4,6 +4,7 @@ import { TaskTimeline } from './TaskTimeline';
 import { TaskAgentDiagram } from './TaskAgentDiagram';
 import { AgentPanel } from './AgentPanel';
 import { A2UIRenderer } from '../../../shared/components/A2UIRenderer';
+import { SimpleMarkdown } from '../../../shared/components/SimpleMarkdown';
 import { useTaskStore, type TaskPendingInteraction } from '../taskStore';
 
 function TaskInteractionForm({ interaction, onResolved }: {
@@ -51,7 +52,7 @@ function TaskInteractionForm({ interaction, onResolved }: {
         /* Standard text-based interaction */
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#e2e8f0', marginBottom: '0.75rem' }}>
-            <span>{interaction.prompt || 'The agent has a question. Please provide more details.'}</span>
+            <SimpleMarkdown text={interaction.prompt || 'The agent has a question. Please provide more details.'} />
             {channelLabel && (
               <span style={{
                 fontSize: '0.85rem',
@@ -215,7 +216,7 @@ export function TaskPanel() {
               Result
             </div>
             <div style={{ color: '#e2e8f0', fontSize: '1.1rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-              {activeTask.finalResult}
+              <SimpleMarkdown text={activeTask.finalResult} />
             </div>
           </div>
         )}

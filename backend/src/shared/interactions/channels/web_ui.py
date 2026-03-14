@@ -22,6 +22,7 @@ class WebUIChannel(ChannelAdapter):
     """
 
     name = "web_ui"
+    capabilities = frozenset({"text", "a2ui"})
 
     def __init__(self, event_bus: Any) -> None:
         self._event_bus: EventBus = event_bus

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agent-platform": {
+      "command": "python",
+      "args": ["tools/a2a_mcp_bridge.py"],
+      "env": {
+        "A2A_BASE_URL": "http://localhost:8000"
+      }
+    }
+  }
+}

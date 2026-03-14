@@ -120,6 +120,10 @@ echo   A2A Protocol:
 echo     Discovery:    http://localhost:8000/.well-known/agents.json
 echo     Catalog:      http://localhost:8000/a2a/catalog
 echo.
+echo   Claude Code MCP Bridge:
+echo     python tools/a2a_mcp_bridge.py
+echo     Config: .mcp.json ^-^> mcpServers.agent-platform
+echo.
 echo   Observability:
 echo     Grafana:      http://localhost:3002  (admin/admin)
 echo     Prometheus:   http://localhost:9090

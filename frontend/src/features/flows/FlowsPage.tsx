@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { FlowStatus, MultiQuestionForm } from './components/FlowStatus';
 import { FlowDiagram, type FlowDefinitionData } from './components/FlowDiagram';
+import { SimpleMarkdown } from '../../shared/components/SimpleMarkdown';
 import { useFlowStore } from './flowStore';
 
 interface FlowInfo {
@@ -555,7 +556,7 @@ export function FlowsPage() {
                   }}
                 >
                   <div style={{ color: '#e2e8f0', marginBottom: '0.75rem' }}>
-                    {interaction.prompt || 'The agent has a question. Please provide more details.'}
+                    <SimpleMarkdown text={interaction.prompt || 'The agent has a question. Please provide more details.'} />
                   </div>
 
                   {interaction.interaction_type === 'multi_question' && interaction.questions && interaction.questions.length > 0 ? (

@@ -158,9 +158,32 @@ class RootAgentManager:
         if not sub_agents:
             raise ValueError(f"No sub-agents could be created for root-agent '{defn.name}'")
 
-        # Build orchestrator instruction
-        instruction = self._build_instruction(defn, sub_agents)
+        # Build orchestrator instruction (channel-aware)
+        instruction = self._build_instruction(
+            defn, sub_agents, channel=channel, interaction_broker=interaction_broker,
+        )
         model = model_override or defn.model
+
+        # Build orchestrator tools: exit_loop + any declared builtins (e.g. ask_user)
+        orchestrator_tools: list = [exit_loop]
+        for builtin_name in defn.tools.builtin:
+            tool = self._factory._resolve_builtin(
+                builtin_name,
+                task_id=task_id,
+                pending_interactions=pending_interactions,
+                event_bus=event_bus,
+                context_type="task",
+                interaction_broker=interaction_broker,
+                channel=channel,
+            )
+            if tool:
+                orchestrator_tools.append(tool)
+        logger.info(
+            "orchestrator_tools_built",
+            tool_count=len(orchestrator_tools),
+            tool_names=[getattr(t, "__name__", str(t)) for t in orchestrator_tools],
+            declared_builtins=defn.tools.builtin,
+        )
 
         # Generate content config
         gen_config = None
@@ -181,7 +204,7 @@ class RootAgentManager:
             description="Orchestrates task execution by delegating to specialized agents.",
             instruction=instruction,
             sub_agents=sub_agents,
-            tools=[exit_loop],
+            tools=orchestrator_tools,
             generate_content_config=gen_config,
             **tracing_kwargs,
         )
@@ -192,10 +215,37 @@ class RootAgentManager:
             max_iterations=defn.orchestration.max_iterations,
         )
 
-    def _build_instruction(self, defn: RootAgentDefinition, sub_agents: list[Agent]) -> str:
-        """Build the orchestrator instruction, merging definition template with agent info."""
+    def _build_instruction(
+        self,
+        defn: RootAgentDefinition,
+        sub_agents: list[Agent],
+        *,
+        channel: str = "web_ui",
+        interaction_broker: Any = None,
+    ) -> str:
+        """Build the orchestrator instruction, merging definition template with agent info.
+
+        When the definition declares builtin tools like ask_user, the appropriate
+        communication guide is injected based on channel capabilities.
+        """
+        from src.shared.interactions.prompts import get_communication_guide
+
         agents_desc = "\n".join(f"- {a.name}: {a.description}" for a in sub_agents)
         output_keys_desc = "\n".join(f"- {a.name}_output" for a in sub_agents)
+
+        # Resolve channel-aware communication guide
+        capabilities = frozenset({"text"})
+        if interaction_broker:
+            capabilities = interaction_broker.get_channel_capabilities(channel)
+        comm_guide = get_communication_guide(capabilities)
+        logger.info(
+            "build_instruction_comm_guide",
+            channel=channel,
+            capabilities=sorted(capabilities),
+            guide_type="a2ui" if "a2ui" in capabilities else "text_only",
+            guide_length=len(comm_guide),
+            has_broker=interaction_broker is not None,
+        )
 
         if defn.instruction:
             # Allow the definition to use template placeholders
@@ -203,9 +253,10 @@ class RootAgentManager:
                 defn.instruction
                 .replace("{{ agents_desc }}", agents_desc)
                 .replace("{{ output_keys_desc }}", output_keys_desc)
+                .replace("{{ communication_guide }}", comm_guide)
             )
 
-        # Default instruction (same logic as the old RootAgentFactory)
+        # Default instruction
         return (
             "You are the orchestrator agent that coordinates task execution.\n\n"
             f"Available agents you can transfer to:\n{agents_desc}\n\n"
@@ -216,14 +267,15 @@ class RootAgentManager:
             "1. Analyze the user's request and the current state.\n"
             "2. If no agent has responded yet, transfer to the appropriate specialized agent.\n"
             "3. If an agent responded with questions or needs clarification, "
-            "transfer to user_agent to ask the human user.\n"
-            "4. If user_agent returned the user's answer, transfer back to the "
+            "call ask_user to get the answer from the human user.\n"
+            "4. If the user answered via ask_user, transfer back to the "
             "specialized agent with the user's answer included in context.\n"
             "5. If the task is fully completed with a satisfactory result, "
             "present the final result and then call exit_loop to finish.\n"
             "6. Repeat until the task is done.\n\n"
+            f"{comm_guide}\n\n"
             "IMPORTANT:\n"
-            "- Each turn you can do ONE action: transfer to an agent OR call exit_loop.\n"
+            "- Each turn you can do ONE action: transfer to an agent, call ask_user, OR call exit_loop.\n"
             "- Always review agent outputs before deciding the next step.\n"
-            "- If the task is ambiguous from the start, transfer to user_agent first."
+            "- If the task is ambiguous from the start, call ask_user to clarify first."
         )

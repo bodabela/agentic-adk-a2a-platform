@@ -32,6 +32,7 @@ class TeamsChannel(ChannelAdapter):
     """Microsoft Teams Bot Framework integration."""
 
     name = "teams"
+    capabilities = frozenset({"text"})
 
     def __init__(
         self,
